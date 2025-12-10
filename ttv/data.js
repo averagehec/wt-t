@@ -1,4 +1,4 @@
-/*partially outdated functions, will later be merged with <ee.js>
+/*partially outdated functions, will later be merged with <ee.js>*/
 (function () {
   "use strict";
 
