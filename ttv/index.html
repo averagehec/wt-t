@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html data-bs-theme="dark">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Tech Tree Viewer</title>
+    <link rel="stylesheet" href="techTree.css">
+  </head>
+  <body>
+    <script src="data.js"></script>
+    <script defer src="index.js"></script>
+    <script defer src="ee.js"></script>
+    <script>
+      function createUnitTooltip(unit, container, labels = {}) {
+        let blank = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+        container = container ?? document.body;
+        if (typeof unit === "string") {
+          try {
+            unit = new Unit(unit);
+          } catch {
+            return null;
+          }
+        }
+        document.getElementById("unit-tooltip")?.remove();
+        const tooltip = document.createElement("div");
+        tooltip.id = "unit-tooltip";
+        Object.assign(tooltip.style, {
+          position: "fixed",
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+          zIndex: 9999,
+          background: "#2B3B45",
+          border: "1px solid #404E57",
+          borderTop: "4px solid var(--default-topline-color)",
+          borderRadius: "2px",
+          padding: "10px",
+          minWidth: "300px",
+          maxWidth: "422.5px",
+          maxHeight: "99.5vh",
+          color: "#fff",
+          fontFamily: "WTSymbols, Roboto, Tahoma, sans-serif",
+          boxShadow: "0 2px 15px rgba(0,0,0,0.5)",
+          overflowY: "auto", // scroll only inside tooltip if too tall
+          overflowX: "hidden"
+        });
+        const closeBtn = document.createElement("button");
+        closeBtn.textContent = "×";
+        Object.assign(closeBtn.style, {
+          position: "absolute",
+          textAlign: "right",
+          transform: "translateX(-5%) translateY(5%)",
+          marginLeft: "auto",
+          marginRight: 0,
+          background: "transparent",
+          border: "none",
+          color: "#fff",
+          fontSize: "1.2em",
+          cursor: "pointer",
+          zIndex: 15
+        });
+        closeBtn.onclick = () => tooltip.remove();
+        tooltip.appendChild(closeBtn);
+        const parseColorTags = txt => (txt ?? "").toString().replace(/\[color=(.*?)\](.*?)\[\/color\]/g, (_, c, t) => `<span style="color:${c}">${t}</span>`).replace(/\n/g, "<br>");
+          const api = {
+            isAlive() {
+              return document.body.contains(tooltip);
+            },
+            setTopLineColor(color) {
+              tooltip.style.borderTopColor = color || "var(--default-topline-color)";
+            },
+            setTitle(text) {
+              if (!text) return;
+              const div = document.createElement("div");
+              div.style.textAlign = "center";
+              div.style.fontSize = "1.2em";
+              div.style.marginBottom = "4px";
+              div.innerHTML = `	<b>${text}</b>`;
+              tooltip.appendChild(div);
+            },
+            setCategory(text) {
+              if (!text) return;
+              const div = document.createElement("div");
+              div.style.textAlign = "center";
+              div.style.marginBottom = "4px";
+              div.innerHTML = `	<i>${String(text)}</i>`;
+              tooltip?.appendChild(div);
+              return div;
+            },
+            setRankBR(rank, br) {
+              if (!rank && !br) return;
+              const div = document.createElement("div");
+              div.style.textAlign = "center";
+              div.style.marginBottom = "6px";
+              let html = "";
+              const rLabel = String(labels?.rank ?? "Rank");
+              const brLabel = String(labels?.battleRating ?? "Battle Rating");
+              if (rank != null && rank != undefined) html += `${rLabel}: 	<b>${rank}</b>`;
+              if (rank && br) html += "&nbsp;&nbsp;";
+              if (br) html += `${brLabel}: 	<b>${br}</b>`;
+              div.innerHTML = html;
+              tooltip?.appendChild(div);
+              return div;
+            },
+            setImage(mainURL, flagURL) {
+              const containerDiv = document.createElement("div");
+              containerDiv.style.position = "relative";
+              containerDiv.style.width = "100%";
+              containerDiv.style.marginBottom = "6px";
+              containerDiv.style.minWidth = "370px";
+              containerDiv.style.minHeight = "175px";
+              containerDiv.style.maxHeight = "0.45vh";
+              containerDiv.style.top = "-2.5px";
+              if (mainURL) {
+                const img = document.createElement("img");
+                img.src = mainURL || blank;
+                Object.assign(img.style, {
+                  position: "relative",
+                  width: "100%",
+                  display: "block",
+                  objectFit: "contain",
+                  maxWidth: "370px",
+                  maxHeight: "175px",
+                  zIndex: 2,
+                  opacity: 1,
+                  pointerEvents: "none",
+                });
+                img.onerror = () => (img.src = blank);
+                containerDiv?.appendChild(img);
+              };
+              if (flagURL) {
+                const flag = document.createElement("img");
+                flag.src = flagURL || blank;
+                Object.assign(flag.style, {
+                  position: "absolute",
+                  width: "37.5%",
+                  height: "35%",
+                  maxWidth: "135px",
+                  top: "-2.5%",
+                  left: "5%",
+                  zIndex: 1,
+                  opacity: 0.95,
+                  borderRadius: "2px",
+                  pointerEvents: "none",
+                });
+                flag.style.zIndex = 1;
+                flag.onerror = () => (flag.src = blank);
+                containerDiv?.appendChild(flag);
+              }
+              tooltip?.appendChild(containerDiv);
+              return containerDiv;
+            },
+            addText(key, value) {
+              const fontSize = Math.max(12, Math.min(14.5, window.innerWidth / 75));
+              if (value == null || value === "") {
+                const div = document.createElement("div");
+                div.style.textAlign = "center";
+                div.style.marginBottom = "2px";
+                div.style.fontSize = `${fontSize}px`;
+                div.innerHTML = parseColorTags(key);
+                div.style.transform = `translate(0px, 10px)`
+                tooltip?.appendChild(div);
+                return;
+              }
+              const row = document.createElement("div");
+              row.style.display = "flex";
+              row.style.justifyContent = "space-between";
+              row.style.marginBottom = "2px";
+              row.style.fontSize = `${fontSize}px`;
+              const k = document.createElement("span");
+              k.textContent = key;
+              const v = document.createElement("span");
+              v.innerHTML = parseColorTags(value);
+              row.appendChild(k);
+              row.appendChild(v);
+              tooltip?.appendChild(row);
+            },
+            addNewline() {
+              const div = document.createElement("div");
+              div.style.textAlign = "center";
+              div.style.marginBottom = "2px";
+              div.innerHTML = "&nbsp;";
+              tooltip?.appendChild(div);
+            },
+            close() {
+              tooltip.remove();
+            },
+            getElement() {
+              return tooltip;
+            }
+          };
+          // Normalize unit data
+          let data = {
+            header: [],
+            data: []
+          }, other = {};
+          let title, category, rank, br, mainImg, flagImg, shouldShowFlag
+          if (unit instanceof Unit) {
+            data = unit.getUnitTooltipData?.() || data;
+            other = unit.getUnitOtherInfo?.() || other;
+            title = unit.getUnitName?.() || "";
+            category = unit.getUnitRole?.()?.text || "";
+            rank = unit.getUnitRank?.();
+            br = unit.getUnitShowBattleRating?.() ? unit.getUnitBattleRating?.() : null;
+            mainImg = unit.getUnitTooltipImage?.();
+            flagImg = unit.getUnitTooltipFlag?.() || MINI_FLAG;
+            shouldShowFlag = unit.getUnitOtherInfo?.()?.shouldShowFlag;
+          } else if (typeof unit === "object") {
+            title = unit.name || "";
+            category = unit.type || "";
+            rank = unit.rank || "";
+            br = unit.br || "";
+            mainImg = unit.imgURL || "";
+            flagImg = unit.flagURL || unit.country && typeof unit.country == "string" ? `https://static.encyclopedia.warthunder.com/unit_tooltip/${unit.country.startsWith("country_")?unit.country:"country_"+unit.country}.png` : MINI_FLAG;
+            data.header = unit.header || [];
+            data.data = unit.data || [];
+            other = unit.other || {};
+          }
+          api.setTitle(title); api.setCategory(category); api.setRankBR(rank, br); api.setImage(mainImg, flagImg);
+          (data.header || []).forEach(h => {
+            if (h.value != null) api.addText(h.value, null);
+          });
+          (data.data || []).forEach(d => {
+            if (d.value != null) api.addText(d.name, d.value);
+          }); api.setTopLineColor(other.isSquadronVehicle ? "green" : other.isPremium ? "orange" : other.isLocked ? "red" : other.isBroken ? "red" : "var(--default-topline-color)"); container.appendChild(tooltip);
+          return api;
+        }
+
+        function createUnitSearchBox(unit, container) {
+          if (typeof unit == "string") {
+            try {
+              unit = new Unit(unit);
+            } catch {
+              return null;
+            }
+          };
+          container = container ?? null;
+          let imgURL = unit?.getUnitShopImage() ?? (unit?.slotURL ?? unit?.shopURL ?? unit?.unitShopURL ?? unit?.unitSlotURL) ?? "";
+          let backupImgURL = unit?.getUnitIcon() ?? (unit?.backupImgURL ?? unit?.iconURL ?? unit?.icon) ?? "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+          let hasLoadedBackup = false;
+          let unitName = unit?.getUnitShopName() ?? (unit?.unitName ?? unit?.name ?? unit?.unitShopName ?? unit?.unitSlotName) ?? "";
+          let unitCountry = unit?.getUnitOperatorCountry()?.baseCountryName ?? (unit?.unitCountry ?? unit?.country ?? unit?.unitCountry) ?? "";
+          let unitRank = unit?.getUnitRank() ?? (unit?.unitRank ?? unit?.rank) ?? "";
+          let isPremium = unit?.getUnitOtherInfo()?.isPremium ?? (unit?.isPremium ?? unit?.premium ?? unit?.unitIsPremium) ?? false;
+          let isSquadron = unit?.getUnitOtherInfo()?.isSquadronVehicle ?? (unit?.isSquadron ?? unit?.isSquadronVehicle ?? unit?.unitIsSquadron ?? unit?.squadronVehicle) ?? false;
+          let resultObj = document.createElement("a");
+          resultObj.setAttribute("class", "gsearch-result");
+          resultObj.setAttribute("onclick", "void(0);");
+          resultObj.innerHTML = `					<div class="gsearch-result_icon">		<img class="unit-icon" src=${imgURL && imgURL != "" ? imgURL : "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=="} alt="">		</div>		<div class="gsearch-result_content">			<div class="gsearch-result_title">${unitName && unitName != "" ? unitName : ""}</div>			<div class="gsearch-result_subtitle">${unitCountry && unitCountry != "" ? unitCountry : "USA"} • Rank ${unitRank && unitRank != "" ? unitRank : "I"}</div>		</div>`;
+          let img = resultObj?.querySelector(".unit-icon");
+          img?.addEventListener("error", () => {
+            if (!hasLoadedBackup) {
+              img.src = backupImgURL;
+              hasLoadedBackup = true;
+            } else img.src = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+          });
+          if (isPremium) resultObj.style.backgroundColor = 'rgba(250, 220, 10, 0.05)';
+          else if (isSquadron) resultObj.style.backgroundColor = 'rgba(10, 220, 10, 0.05)';
+          container?.appendChild(resultObj);
+          return resultObj;
+        };
+        
+
+        class ArrowDrawer {
+          static getNodePos(node, container) {
+            let x = 0,
+              y = 0;
+            while (node && node !== container) {
+              x += node.offsetLeft;
+              y += node.offsetTop;
+              node = node.offsetParent;
+            }
+            return [x, y];
+          }
+          constructor(container, canvas, options = {}) {
+            this.container = container;
+            this.canvas = canvas;
+            this.ctx = canvas.getContext("2d");
+            this.canvasPos = ArrowDrawer.getNodePos(canvas, container);
+            this.padding = options.arrowPadding ?? 4;
+            this.thickness = options.arrowThickness ?? 8;
+          }
+          getCtx() {
+            return this.ctx;
+          }
+          draw(fromEl, toEl) {
+            const toPos = ArrowDrawer.getNodePos(toEl, this.container),
+              fromPos = ArrowDrawer.getNodePos(fromEl, this.container),
+              ctx = this.getCtx();
+            if (Math.abs(fromPos[1] - toPos[1]) <= 5) {
+              if (Math.abs(toPos[0] - fromPos[0]) <= 2) return;
+              let startX, endX, dir;
+              fromPos[0] > toPos[0] ? (dir = 1, startX = toPos[0] + fromEl.clientWidth, endX = fromPos[0]) : (dir = -1, startX = toPos[0], endX = fromPos[0] + toEl.clientWidth);
+              const y = Math.round(toPos[1] - this.canvasPos[1] + (fromEl.clientHeight / 2) - this.thickness / 2),
+                dx = endX - 3 * dir,
+                width = dx - this.canvasPos[0],
+                len = startX - dx + -2 * dir;
+              ctx.fillRect(width, y, len, this.thickness);
+              ctx.beginPath();
+              ctx.moveTo(width + len, y - 3);
+              ctx.lineTo(width + len + 7 * dir, y + this.thickness / 2);
+              ctx.lineTo(width + len, y + this.thickness + 3);
+              ctx.fill();
+            } else if (Math.abs(toPos[0] - fromPos[0]) <= 2) {
+              if (fromPos[1] > toPos[1]) {
+                let x = Math.round(toPos[0] - this.canvasPos[0] + fromEl.clientWidth / 2 - this.thickness / 2),
+                  yStart = toPos[1] + fromEl.clientHeight + this.padding,
+                  yRel = Math.round(yStart - this.canvasPos[1]),
+                  height = fromPos[1] - yStart - this.padding - 7;
+                ctx.fillRect(x, yRel, this.thickness, height);
+                ctx.beginPath();
+                ctx.moveTo(x - 3, yRel + height);
+                ctx.lineTo(x + this.thickness / 2, yRel + height + 7);
+                ctx.lineTo(x + this.thickness + 3, yRel + height);
+                ctx.fill();
+              }
+            } else {
+              let x = Math.round(toPos[0] - this.canvasPos[0] + fromEl.clientWidth / 2 - this.thickness / 2),
+                yStart = toPos[1] + fromEl.clientHeight + this.padding,
+                yRel = Math.round(yStart - this.canvasPos[1]),
+                height = fromPos[1] - yStart - this.padding;
+              toEl.classList.contains("wt-tree_group") && (height += 4);
+              ctx.fillRect(x, yRel, this.thickness, 4);
+              let endX = Math.round(fromPos[0] - this.canvasPos[0] + toEl.clientWidth / 2 - this.thickness / 2);
+              fromPos[0] < toPos[0] ? ctx.fillRect(endX, yRel + 4, Math.abs(endX - x) + this.thickness, this.thickness) : ctx.fillRect(x, yRel + 4, Math.abs(endX - x) + this.thickness, this.thickness);
+              let yLen = height - this.thickness - 4 - 7,
+                yOffset = yRel + 4 + this.thickness;
+              ctx.fillRect(endX, yOffset, this.thickness, yLen);
+              ctx.beginPath();
+              ctx.moveTo(endX - 3, yOffset + yLen);
+              ctx.lineTo(endX + this.thickness / 2, yOffset + yLen + 7);
+              ctx.lineTo(endX + this.thickness + 3, yOffset + yLen);
+              ctx.fill();
+            }
+          }
+        }
+        class TechTree {
+          treeHeaders = ["Researchable vehicles", "Premium vehicles"];
+          container = null;
+          treeInstance = null;
+          #settings = {
+            maxX: 7,
+            verticalLineX: 4,
+            treeLeftWidth: 648,
+            treeRightWidth: 252,
+            treeMinWidth: 955
+          };
+          #grid = [];
+          #setVehicles = [];
+          #rankVehicleData = {};
+          #new_svg = `		<svg class="new-icon"			xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">			<defs>				<linearGradient id="a" x1="1" y1="16.5" x2="32" y2="16.5" gradientUnits="userSpaceOnUse">					<stop offset="0" stop-color="#855a27"></stop>					<stop offset="1" stop-color="#feed90"></stop>				</linearGradient>				<linearGradient id="b" x1="10.025" y1="31.795" x2="19.532" y2="2.731" gradientUnits="userSpaceOnUse">					<stop offset="0" stop-color="#a57b40"></stop>					<stop offset=".301" stop-color="#f2c47b"></stop>					<stop offset=".347" stop-color="#f4ce7d"></stop>					<stop offset=".521" stop-color="#fcf282"></stop>					<stop offset=".614" stop-color="#ffff84"></stop>					<stop offset=".951" stop-color="#fffff7"></stop>				</linearGradient>				<linearGradient id="c" x1="12.571" y1="12.697" x2="16.614" y2="16.61" gradientUnits="userSpaceOnUse">					<stop offset="0" stop-color="#855a27" stop-opacity="0"></stop>					<stop offset="1" stop-color="#caac50"></stop>				</linearGradient>				<linearGradient id="d" x1="13.756" y1="22.575" x2="19.104" y2="1.966" gradientUnits="userSpaceOnUse">					<stop offset=".005" stop-color="#fcec8d" stop-opacity="0"></stop>					<stop offset="1" stop-color="#feef98"></stop>				</linearGradient>			</defs>			<g data-name="Layer 7">				<path style="opacity:.73" d="M32 0h-9l-.707.293-22 22L0 23v9l1.707.707 31-31z"></path>				<path d="M23 1h9L1 32v-9Z" style="fill-rule:evenodd;fill:url(#a)"></path>				<path d="M29.586 2 2 29.586v-6.172L23.414 2zM32 1h-9L1 23v9z" style="opacity:.93;fill:url(#b)"></path>				<path d="M23 1h9L1 32v-9Z" style="fill-rule:evenodd;opacity:.57;fill:url(#c)"></path>				<path d="M23 1h9L1 32v-9Z" style="fill-rule:evenodd;opacity:.57;fill:url(#d)"></path>				<path style="fill-rule:evenodd;fill:#fff" d="M23 1v1l8.011.011L32 1z"></path>			</g>		</svg>`;
+          #talisman_svg = `		<svg class="talisman-icon"			xmlns="http://www.w3.org/2000/svg"			xmlns:xlink="http://www.w3.org/1999/xlink" width="24" height="24" viewBox="0 0 24 24">			<defs>				<linearGradient id="linear-gradient" x1="12" y1="15.457" x2="12" y2="4.483" gradientUnits="userSpaceOnUse">					<stop offset="0" stop-color="#bd663a"/>					<stop offset=".495" stop-color="#dfa54f"/>					<stop offset="1" stop-color="#faf698"/>				</linearGradient>				<linearGradient id="linear-gradient-2" x1="12" y1="15.457" x2="12" y2="4.483" gradientUnits="userSpaceOnUse">					<stop offset="0" stop-color="#bd663a"/>					<stop offset=".276" stop-color="#dfa54f"/>					<stop offset=".519" stop-color="#eac56c"/>					<stop offset=".832" stop-color="#f5e88c"/>					<stop offset="1" stop-color="#faf698"/>				</linearGradient>				<linearGradient id="linear-gradient-3" x1="12" y1="15.245" x2="12" y2="6.099" gradientUnits="userSpaceOnUse">					<stop offset="0" stop-color="#e0a560"/>					<stop offset=".5" stop-color="#f6e399"/>					<stop offset="1" stop-color="#fffdd0"/>				</linearGradient>				<linearGradient id="linear-gradient-4" x1="12" y1="12.848" x2="12" y2="7.465" gradientUnits="userSpaceOnUse">					<stop offset="0" stop-color="#f0b856"/>					<stop offset=".5" stop-color="#ffffa0"/>					<stop offset="1" stop-color="#fff"/>				</linearGradient>				<linearGradient id="linear-gradient-5" x1="13.139" y1="17.804" x2="13.139" y2="4.034" gradientUnits="userSpaceOnUse">					<stop offset="0" stop-color="#5b2f25"/>					<stop offset=".495" stop-color="#984f38"/>					<stop offset="1" stop-color="#d37a55"/>				</linearGradient>				<linearGradient id="linear-gradient-6" x1="14.922" y1="17.804" x2="14.922" y2="4.034" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-7" x1="16.477" y1="17.804" x2="16.477" y2="4.034" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-8" x1="17.725" y1="17.804" x2="17.725" y2="4.034" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-9" x1="18.647" y1="17.804" x2="18.647" y2="4.034" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-10" x1="19.136" y1="17.804" x2="19.136" y2="4.034" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-11" x1="18.805" y1="17.804" x2="18.805" y2="4.034" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-12" x1="18.04" y1="17.804" x2="18.04" y2="4.034" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-13" x1="19.129" y1="17.804" x2="19.129" y2="4.034" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-14" x1="16.671" y1="17.804" x2="16.671" y2="4.034" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-15" x1="10.861" y1="17.804" x2="10.861" y2="4.034" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-16" x1="9.078" y1="17.804" x2="9.078" y2="4.034" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-17" x1="7.523" y1="17.804" x2="7.523" y2="4.034" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-18" x1="6.275" y1="17.804" x2="6.275" y2="4.034" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-19" x1="5.353" y1="17.804" x2="5.353" y2="4.034" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-20" x1="4.864" y1="17.804" x2="4.864" y2="4.034" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-21" x1="4.871" y1="17.804" x2="4.871" y2="4.034" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-22" x1="5.217" y1="17.804" x2="5.217" y2="4.034" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-23" x1="6.031" y1="17.804" x2="6.031" y2="4.034" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-24" x1="7.403" y1="17.804" x2="7.403" y2="4.034" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-25" x1="13.138" y1="18.777" x2="13.138" y2="17.299" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-26" x1="14.922" y1="18.436" x2="14.922" y2="16.709" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-27" x1="16.477" y1="17.655" x2="16.477" y2="15.731" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-28" x1="17.725" y1="16.522" x2="17.725" y2="14.457" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-29" x1="18.647" y1="14.976" x2="18.647" y2="12.911" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-30" x1="19.136" y1="11.093" x2="19.136" y2="9.444" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-31" x1="18.805" y1="9.12" x2="18.805" y2="7.842" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-32" x1="18.04" y1="7.461" x2="18.04" y2="6.255" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-33" x1="19.129" y1="13.064" x2="19.129" y2="11.14" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-34" x1="16.671" y1="6.038" x2="16.671" y2="4.792" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-35" x1="10.861" y1="18.777" x2="10.861" y2="17.299" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-36" x1="9.078" y1="18.436" x2="9.078" y2="16.709" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-37" x1="7.523" y1="17.655" x2="7.523" y2="15.731" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-38" x1="6.275" y1="16.522" x2="6.275" y2="14.457" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-39" x1="5.353" y1="14.976" x2="5.353" y2="12.911" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-40" x1="4.864" y1="11.093" x2="4.864" y2="9.444" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-41" x1="4.871" y1="13.064" x2="4.871" y2="11.14" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-42" x1="5.217" y1="9.125" x2="5.217" y2="7.829" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-43" x1="6.031" y1="7.435" x2="6.031" y2="6.151" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-44" x1="7.403" y1="6.008" x2="7.403" y2="4.679" xlink:href="#linear-gradient-5"/>				<linearGradient id="linear-gradient-45" x1="12" y1="15.342" x2="12" y2="7.17" gradientUnits="userSpaceOnUse">					<stop offset="0" stop-color="#b96232"/>					<stop offset=".5" stop-color="#e69f61"/>					<stop offset="1" stop-color="#f7d586"/>				</linearGradient>				<style>.cls-30{fill:#ff8752}</style>			</defs>			<g id="Layer_3" data-name="Layer 3">				<circle cx="12" cy="11.022" r="6" style="opacity:.51"/>				<path d="M22.991 12.145a2.33 2.33 0 0 0-.332-1.342A2.15 2.15 0 0 0 22.9 9.36a2.2 2.2 0 0 0-.684-1.276 2.13 2.13 0 0 0-.163-1.34 2.2 2.2 0 0 0-1.03-1.066 2.1 2.1 0 0 0-.405-1.013 2.24 2.24 0 0 0-1.39-.887 2.1 2.1 0 0 0-.758-.94 2.24 2.24 0 0 0-1.634-.379.9.9 0 0 0-.269-.16 1.92 1.92 0 0 0-1.553.038 1.9 1.9 0 0 0-.926 1.218 3.5 3.5 0 0 0-.083 1.496 1 1 0 0 0 .467.7 1 1 0 0 0 .339.13 1.63 1.63 0 0 0 1.305 1.125 1.9 1.9 0 0 0 .398.85 1.6 1.6 0 0 0 .432.332 1.9 1.9 0 0 0 .167.838 1.6 1.6 0 0 0 .373.468 1.9 1.9 0 0 0-.06.849 1.8 1.8 0 0 0 .254.606 1.5 1.5 0 0 0-.236.75 1.8 1.8 0 0 0 .096.687 1.6 1.6 0 0 0-.459.657 1.6 1.6 0 0 0-.1.66 2 2 0 0 0-.552.477 1.5 1.5 0 0 0-.292.647 1.4 1.4 0 0 0-.583.29 1.45 1.45 0 0 0-.448.593 1.55 1.55 0 0 0-.739.184 1.9 1.9 0 0 0-.561.464 1.6 1.6 0 0 0-.666-.041 1.5 1.5 0 0 0-.761.334 2 2 0 0 0-.378.356 1.6 1.6 0 0 0-.315-.304 1.6 1.6 0 0 0-.805-.383 1.7 1.7 0 0 0-.687.04 1.9 1.9 0 0 0-.584-.479 1.5 1.5 0 0 0-.688-.17 1.25 1.25 0 0 0-.412-.537 1.55 1.55 0 0 0-.655-.368 1.7 1.7 0 0 0-.31-.66 2 2 0 0 0-.526-.443 1.5 1.5 0 0 0-.09-.634 1.6 1.6 0 0 0-.444-.658l-.024-.023a1.7 1.7 0 0 0 .096-.656 1.56 1.56 0 0 0-.24-.786 1.9 1.9 0 0 0 .27-.681 1.7 1.7 0 0 0-.08-.751 1.8 1.8 0 0 0 .387-.508 1.8 1.8 0 0 0 .146-.8 1.9 1.9 0 0 0 .506-.41 1.85 1.85 0 0 0 .36-.816 1.84 1.84 0 0 0 .866-.421 1.7 1.7 0 0 0 .376-.564 1 1 0 0 0 .772-.794 3.9 3.9 0 0 0 .005-1.483 1.97 1.97 0 0 0-.875-1.364 1.76 1.76 0 0 0-1.524-.085l-.05.02a2.04 2.04 0 0 0-1.672.297 2.2 2.2 0 0 0-.8.974 2.13 2.13 0 0 0-1.34.841 2.3 2.3 0 0 0-.446 1.073A2.2 2.2 0 0 0 2.2 6.501a2.4 2.4 0 0 0-.227 1.419 2.2 2.2 0 0 0-.867 1.395 2.23 2.23 0 0 0 .236 1.486 2.35 2.35 0 0 0-.332 1.359 2.2 2.2 0 0 0 .59 1.35 2.5 2.5 0 0 0-.11.542 2.3 2.3 0 0 0 .143.931 2.2 2.2 0 0 0 .539.839 2.3 2.3 0 0 0 .369.281 2.4 2.4 0 0 0 .035.514 2 2 0 0 0 .388.908 2.26 2.26 0 0 0 1.155.828 2.46 2.46 0 0 0 .787 1.27 2.27 2.27 0 0 0 1.32.485 2.25 2.25 0 0 0 1.013.97 2 2 0 0 0 .94.222l.084-.001a2.3 2.3 0 0 0 .464-.063 2.6 2.6 0 0 0 .382.334 2.2 2.2 0 0 0 .904.347 2.15 2.15 0 0 0 1.807-.52 3 3 0 0 0 .179-.172 2 2 0 0 0 .18.173 2.5 2.5 0 0 0 .862.472 2.3 2.3 0 0 0 .581.074 3 3 0 0 0 .383-.03 2.2 2.2 0 0 0 .89-.349 2.3 2.3 0 0 0 .375-.33 2.3 2.3 0 0 0 .464.064l.088.001a2 2 0 0 0 .923-.214 2.28 2.28 0 0 0 1.027-.981 2.5 2.5 0 0 0 1.383-.535 2.32 2.32 0 0 0 .716-1.217 2.24 2.24 0 0 0 1.149-.81 2 2 0 0 0 .4-.916 2.3 2.3 0 0 0 .035-.523 2.4 2.4 0 0 0 .384-.294 2.25 2.25 0 0 0 .533-.844 2.3 2.3 0 0 0 .134-.952 2.4 2.4 0 0 0-.109-.503 2.24 2.24 0 0 0 .592-1.366Z" style="opacity:.06"/>				<path d="M22.741 12.133a2.08 2.08 0 0 0-.377-1.322 1.95 1.95 0 0 0 .29-1.414 2 2 0 0 0-.714-1.223 1.94 1.94 0 0 0-.116-1.33 1.98 1.98 0 0 0-1.036-1 1.9 1.9 0 0 0-.374-1.035A2 2 0 0 0 19.047 4a1.88 1.88 0 0 0-.725-.96 2 2 0 0 0-1.569-.314h-.003a.65.65 0 0 0-.272-.194 1.67 1.67 0 0 0-1.346.025 1.65 1.65 0 0 0-.805 1.068 3.3 3.3 0 0 0-.075 1.386.75.75 0 0 0 .75.636 1.56 1.56 0 0 0 .452.783 1.55 1.55 0 0 0 .886.352 1.6 1.6 0 0 0 .358.904 1.4 1.4 0 0 0 .512.349 1.6 1.6 0 0 0 .126.876 1.4 1.4 0 0 0 .447.498 1.63 1.63 0 0 0-.113.88 1.5 1.5 0 0 0 .316.654 1.33 1.33 0 0 0-.292.77 1.54 1.54 0 0 0 .146.746 1 1 0 0 0-.124.104 1.4 1.4 0 0 0-.401.57 1.4 1.4 0 0 0-.069.712l.001.013a1 1 0 0 0-.13.055 1.7 1.7 0 0 0-.49.419 1.33 1.33 0 0 0-.27.703 1.25 1.25 0 0 0-.65.28 1.3 1.3 0 0 0-.433.653 1.33 1.33 0 0 0-.786.143 1.7 1.7 0 0 0-.506.427 1 1 0 0 0-.07.112l-.067-.022a1.45 1.45 0 0 0-.668-.065 1.3 1.3 0 0 0-.653.29 1.9 1.9 0 0 0-.47.5L12 17.44l-.056-.09a1.8 1.8 0 0 0-.42-.458 1.4 1.4 0 0 0-.683-.327 1.5 1.5 0 0 0-.684.063l-.07.022a1 1 0 0 0-.075-.12 1.7 1.7 0 0 0-.517-.428 1.3 1.3 0 0 0-.741-.135 1.18 1.18 0 0 0-.416-.613 1.34 1.34 0 0 0-.7-.343 1.4 1.4 0 0 0-.282-.703 1.7 1.7 0 0 0-.486-.403 1 1 0 0 0-.117-.048 1.44 1.44 0 0 0-.06-.706 1.35 1.35 0 0 0-.382-.563 1 1 0 0 0-.153-.12 1.5 1.5 0 0 0 .149-.731 1.37 1.37 0 0 0-.295-.796 1.6 1.6 0 0 0 .328-.71 1.5 1.5 0 0 0-.13-.797 1.5 1.5 0 0 0 .455-.53 1.65 1.65 0 0 0 .114-.85 1.6 1.6 0 0 0 .57-.414 1.67 1.67 0 0 0 .336-.886 1.53 1.53 0 0 0 .914-.376 1.5 1.5 0 0 0 .369-.611.75.75 0 0 0 .321-.088.74.74 0 0 0 .385-.525 3.6 3.6 0 0 0 .005-1.39 1.7 1.7 0 0 0-.752-1.193 1.51 1.51 0 0 0-1.313-.07.5.5 0 0 0-.105.055l-.02-.006a1.82 1.82 0 0 0-1.549.244 2 2 0 0 0-.757.99 1.9 1.9 0 0 0-1.322.768 2.1 2.1 0 0 0-.412 1.09 1.95 1.95 0 0 0-1.025.973 2.17 2.17 0 0 0-.178 1.417l-.03.02a2 2 0 0 0-.863 1.31 2 2 0 0 0 .284 1.447 2.1 2.1 0 0 0-.377 1.334 2 2 0 0 0 .629 1.303 2.2 2.2 0 0 0-.149.621 2 2 0 0 0 .127.827 2 2 0 0 0 .477.745 2 2 0 0 0 .459.324 2.1 2.1 0 0 0 .02.61 1.8 1.8 0 0 0 .342.801 2 2 0 0 0 1.17.775 2.15 2.15 0 0 0 .724 1.274 2 2 0 0 0 1.326.431 1.98 1.98 0 0 0 .97 1.001 1.8 1.8 0 0 0 .82.194l.08-.001a2 2 0 0 0 .559-.096 2.2 2.2 0 0 0 .439.411 1.95 1.95 0 0 0 .799.306 2.1 2.1 0 0 0 .89-.055A2.1 2.1 0 0 0 12 20.83a2 2 0 0 0 .344.379 2.2 2.2 0 0 0 .761.42 2 2 0 0 0 .518.065 2 2 0 0 0 .34-.026 1.9 1.9 0 0 0 .788-.307 2 2 0 0 0 .433-.41 2 2 0 0 0 .555.098l.084.001a1.74 1.74 0 0 0 .812-.188 2 2 0 0 0 .98-1.006 2.17 2.17 0 0 0 1.374-.472 2.08 2.08 0 0 0 .668-1.234 1.97 1.97 0 0 0 1.167-.76 1.8 1.8 0 0 0 .352-.808 2 2 0 0 0 .017-.616 2.1 2.1 0 0 0 .473-.336 2 2 0 0 0 .472-.749 2 2 0 0 0 .12-.842 2.1 2.1 0 0 0-.149-.589 2 2 0 0 0 .632-1.314Zm-17.465-8.1v-.004Z" style="opacity:.21"/>				<path d="M22.491 12.12a1.8 1.8 0 0 0-.439-1.3 1.76 1.76 0 0 0-.4-2.552 1.74 1.74 0 0 0-.056-1.323 1.76 1.76 0 0 0-1.05-.93h-.003a1.7 1.7 0 0 0-.333-1.062 1.76 1.76 0 0 0-1.207-.706.5.5 0 0 0-.14.008 1.7 1.7 0 0 0-.687-1.012 1.75 1.75 0 0 0-1.373-.271.5.5 0 0 0-.154.064.48.48 0 0 0-.26-.27 1.43 1.43 0 0 0-1.139.012 1.4 1.4 0 0 0-.684.92 3 3 0 0 0-.067 1.276.5.5 0 0 0 .494.424.5.5 0 0 0 .161-.026l.048-.016a1.38 1.38 0 0 0 .384.858l.027.024a1.34 1.34 0 0 0 .878.301l.096-.006a1.4 1.4 0 0 0 .297.987 1.3 1.3 0 0 0 .613.352 1.4 1.4 0 0 0 .06.925 1.3 1.3 0 0 0 .55.523 1.4 1.4 0 0 0-.192.92 1.3 1.3 0 0 0 .405.696 1.2 1.2 0 0 0-.376.792 1.32 1.32 0 0 0 .228.816 1.4 1.4 0 0 0-.29.207 1.16 1.16 0 0 0-.334.472 1.2 1.2 0 0 0-.054.596 1.4 1.4 0 0 0 .048.219 1.7 1.7 0 0 0-.304.094 1.5 1.5 0 0 0-.415.354 1.2 1.2 0 0 0-.226.775 1.2 1.2 0 0 0-.739.254 1.23 1.23 0 0 0-.402.737 1.2 1.2 0 0 0-.847.079 1.4 1.4 0 0 0-.43.36 2 2 0 0 0-.144.29 1.4 1.4 0 0 0-.263-.112 1.24 1.24 0 0 0-.558-.058 1.1 1.1 0 0 0-.544.246 1.6 1.6 0 0 0-.407.434 2.8 2.8 0 0 0-.263.528 2.8 2.8 0 0 0-.264-.53 1.6 1.6 0 0 0-.374-.406 1.13 1.13 0 0 0-.563-.27 1.24 1.24 0 0 0-.57.055 1.4 1.4 0 0 0-.264.114 1.7 1.7 0 0 0-.15-.296 1.4 1.4 0 0 0-.435-.361 1.18 1.18 0 0 0-.808-.077 1.12 1.12 0 0 0-.406-.71 1.16 1.16 0 0 0-.764-.302 1.23 1.23 0 0 0-.238-.766 1.4 1.4 0 0 0-.41-.342 1.7 1.7 0 0 0-.295-.09 1.4 1.4 0 0 0 .045-.205 1.2 1.2 0 0 0-.047-.598 1.14 1.14 0 0 0-.322-.468 1.6 1.6 0 0 0-.316-.209 1.3 1.3 0 0 0 .237-.814 1.2 1.2 0 0 0-.378-.809 1.36 1.36 0 0 0 .414-.733 1.37 1.37 0 0 0-.205-.854 1.36 1.36 0 0 0 .55-.544 1.5 1.5 0 0 0 .064-.92 1.3 1.3 0 0 0 .652-.397 1.54 1.54 0 0 0 .292-.992c.045.004.094.013.136.013a1.27 1.27 0 0 0 .844-.31 1.43 1.43 0 0 0 .364-.71.488.488 0 0 0 .639-.378 3.4 3.4 0 0 0 .004-1.3 1.47 1.47 0 0 0-.628-1.02A1.27 1.27 0 0 0 7.7 2.737a.5.5 0 0 0-.156.116.5.5 0 0 0-.123-.061 1.57 1.57 0 0 0-1.345.213 1.8 1.8 0 0 0-.716 1.037.6.6 0 0 0-.111-.013 1.65 1.65 0 0 0-1.19.677 1.9 1.9 0 0 0-.371 1.116h-.005a1.74 1.74 0 0 0-1.037.907 1.98 1.98 0 0 0-.108 1.452.5.5 0 0 0-.18.078 1.76 1.76 0 0 0-.41 2.561 1.8 1.8 0 0 0-.44 1.308 1.77 1.77 0 0 0 .687 1.257l-.011.014a1.9 1.9 0 0 0-.196.685 1.8 1.8 0 0 0 .112.722 1.7 1.7 0 0 0 .414.651 1.9 1.9 0 0 0 .57.363c-.003.01-.01.017-.012.027a1.9 1.9 0 0 0-.004.685 1.54 1.54 0 0 0 .296.694 1.73 1.73 0 0 0 1.203.709c0 .01-.005.02-.004.032a1.87 1.87 0 0 0 .646 1.258 1.83 1.83 0 0 0 1.108.382 2 2 0 0 0 .236-.02 1.72 1.72 0 0 0 .916 1.047 1.5 1.5 0 0 0 .705.166l.072-.001a1.8 1.8 0 0 0 .659-.148l.004.012a1.9 1.9 0 0 0 .486.496 1.7 1.7 0 0 0 .694.264 2 2 0 0 0 .277.021 2 2 0 0 0 .495-.067 1.9 1.9 0 0 0 .633-.359A2 2 0 0 0 12 20.33a2 2 0 0 0 .506.689 1.9 1.9 0 0 0 .663.368 1.8 1.8 0 0 0 .454.057 2 2 0 0 0 .297-.023 1.7 1.7 0 0 0 .686-.264 1.9 1.9 0 0 0 .484-.494l.005-.012a1.8 1.8 0 0 0 .654.148l.074.001a1.5 1.5 0 0 0 .7-.162 1.72 1.72 0 0 0 .923-1.05 2 2 0 0 0 .234.02 1.87 1.87 0 0 0 1.142-.41 1.85 1.85 0 0 0 .614-1.23l-.004-.034a1.72 1.72 0 0 0 1.196-.7 1.55 1.55 0 0 0 .302-.696 1.9 1.9 0 0 0-.003-.691c-.002-.01-.009-.017-.011-.027a1.9 1.9 0 0 0 .576-.37 1.7 1.7 0 0 0 .41-.653 1.8 1.8 0 0 0 .107-.733 1.9 1.9 0 0 0-.194-.665l-.01-.014a1.78 1.78 0 0 0 .686-1.264m-6.655 6.212a.5.5 0 0 0 .09-.2.39.39 0 0 0 .328-.032.5.5 0 0 0-.217.332l.003.056-.035-.018a.5.5 0 0 0-.278-.054.5.5 0 0 0 .109-.084m1.717-1.31h.02a.5.5 0 0 0 .252-.08.5.5 0 0 0-.05.26c.003.018.014.033.018.05l-.044-.008a.5.5 0 0 0-.333.058.5.5 0 0 0 .137-.28m.05-1.91.016-.019.05.108c.044.098.09.2.125.285l-.126.17a1.3 1.3 0 0 1-.054-.189.8.8 0 0 1-.01-.356Zm3.567-2.496a1 1 0 0 1-.134.08c.026-.163.048-.326.062-.471.101-.07.23-.162.358-.26l.035-.027a1 1 0 0 1 .002.126.8.8 0 0 1-.323.552m-1.065-3.094a.5.5 0 0 0-.093-.076.5.5 0 0 0 .068-.068.5.5 0 0 0 .076.054.5.5 0 0 0-.05.09m-.962.793a.54.54 0 0 1-.243-.241l-.002-.018a8 8 0 0 1 .406.152q.011.082.024.209a2 2 0 0 1-.185-.102m.147 1.75-.03.2a2 2 0 0 1-.156-.149.47.47 0 0 1-.162-.306l.092.065c.09.064.18.132.256.19m.514 1.7a.5.5 0 0 0-.078-.202l-.015-.02a.5.5 0 0 0 .221-.108.5.5 0 0 0 .115.191l-.04.013a.5.5 0 0 0-.203.127m.548-2.242a.5.5 0 0 0-.095.109.5.5 0 0 0-.099-.137.25.25 0 0 0 .129-.14.5.5 0 0 0 .093.114c.01.008.024.005.034.012Zm.907-1.307a1 1 0 0 1-.113.116l-.002-.018a6 6 0 0 0-.055-.447 7 7 0 0 0 .277-.348l.026-.035a1 1 0 0 1 .03.12.77.77 0 0 1-.163.612m-3.494-3.382c.104-.021.21-.039.298-.05l.13.168a2 2 0 0 1-.218.007c-.254-.004-.327-.085-.33-.086l-.01-.013zm.82 1.532c.107.008.213.018.3.03q.04.089.083.197a2 2 0 0 1-.198-.048l-.014-.004c-.24-.07-.293-.17-.294-.17l-.006-.014q.063.003.13.01m-.023 5.31c.07.085.136.173.193.248l-.08.19a2 2 0 0 1-.11-.182.7.7 0 0 1-.079-.237.4.4 0 0 1-.004-.112zm.254 2.051a.5.5 0 0 0 .02-.253q.021 0 .042-.003a.5.5 0 0 0 .23-.105.5.5 0 0 0 .012.148.5.5 0 0 0 .046.078l-.045.001a.5.5 0 0 0-.305.134m1.8-8.422.017-.04a1 1 0 0 1 .058.107.77.77 0 0 1 .006.627 1 1 0 0 1-.082.147 7 7 0 0 0-.177-.431c.056-.117.122-.265.178-.41M19.32 5.5l.008-.046a1 1 0 0 1 .078.092.76.76 0 0 1 .125.612 1 1 0 0 1-.052.163 6 6 0 0 0-.255-.384c.033-.126.068-.283.096-.437m-1.71-1.434a.76.76 0 0 1 .317.534 1 1 0 0 1 .002.176 7 7 0 0 0-.365-.278 8 8 0 0 0-.051-.444l-.007-.05a1 1 0 0 1 .104.062m-2.08-.095c.066-.243.16-.295.16-.295l.015-.007q-.001.066-.006.135a7 7 0 0 1-.022.302l-.195.084a1.5 1.5 0 0 1 .047-.219m-.34.898.04.103-.003.014-.04-.117Zm1.077.61.125-.043c.1-.035.2-.067.287-.092q.07.066.153.15a2 2 0 0 1-.219.037.47.47 0 0 1-.346-.052m.203 10.828.011-.01.02.115c.018.107.033.217.045.312l-.16.12a2 2 0 0 1-.001-.211c.012-.218.06-.309.085-.326m-1.6 1.217a.7.7 0 0 1 .099-.217.4.4 0 0 1 .08-.075l-.012.12c-.012.111-.027.224-.04.32l-.182.067a2 2 0 0 1 .054-.215m-1.771.52a.7.7 0 0 1 .154-.174c.01-.007.076-.046.103-.064q-.022.067-.047.133c-.033.089-.068.17-.116.277l-.01.001q-.084.016-.196.026a1.5 1.5 0 0 1 .112-.2m.3 1.044-.058.01.004-.4ZM12 19.293a.5.5 0 0 0-.092-.069.5.5 0 0 0 .092-.067.5.5 0 0 0 .092.067.5.5 0 0 0-.092.07m-1.445.49-.029-.03.026-.167Zm.193-1.913a.7.7 0 0 1 .154.172 2 2 0 0 1 .112.202 3 3 0 0 1-.206-.028c-.036-.081-.078-.175-.117-.279l-.045-.128Zm-.363.625-.228.1c.005-.014.014-.025.018-.04ZM5.512 13.71a.7.7 0 0 1-.076.222 2 2 0 0 1-.113.184l-.04-.087-.038-.104c.055-.074.12-.159.185-.24l.089-.101a.5.5 0 0 1-.007.126m-3.005-1.637a1 1 0 0 1 .003-.134q.015.014.033.026a10 10 0 0 0 .36.26 6 6 0 0 0 .062.472.7.7 0 0 1-.133-.08.8.8 0 0 1-.325-.544m2.203-.007a8 8 0 0 1 .259-.192l.09-.063a.47.47 0 0 1-.163.306q-.076.08-.156.149zm.142-1.747a2 2 0 0 1-.18.1q.011-.114.024-.21c.085-.035.186-.075.29-.111l.115-.04a.53.53 0 0 1-.25.261m-.963-.917.075-.048.059.064a.5.5 0 0 0-.128.105.5.5 0 0 0-.063-.11zm-.176 1.953a.5.5 0 0 0 .08.112l.049.03a.5.5 0 0 0-.1.136.5.5 0 0 0-.094-.11l-.062-.041c.01-.007.024-.004.034-.012a.5.5 0 0 0 .093-.115m.355 2.08a.5.5 0 0 0 .221.108l-.015.021a.5.5 0 0 0-.078.203.5.5 0 0 0-.203-.127l-.04-.013a.5.5 0 0 0 .115-.191m1.47-5.065a.4.4 0 0 1-.292.197l-.016.005a1 1 0 0 1-.15.034 6 6 0 0 1 .108-.257c.079-.007.17-.012.262-.014l.098-.003zm.85-1.526c-.025.028-.082.092-.284.092a2 2 0 0 1-.226-.018q.086-.121.165-.22c.072.016.154.036.235.058l.006.002.13.036a.3.3 0 0 1-.025.05m-3.782 2.64.023.028c.097.132.2.258.283.355a6 6 0 0 0-.058.467 1 1 0 0 1-.109-.112.8.8 0 0 1-.163-.639 1 1 0 0 1 .024-.1m2.27 6.034a.5.5 0 0 0 .014-.152.5.5 0 0 0 .232.106l.042.003a.5.5 0 0 0 .02.253.5.5 0 0 0-.305-.134l-.047-.002zm1.299 1.425a.5.5 0 0 0 .253.08h.019a.5.5 0 0 0 .137.28.5.5 0 0 0-.333-.058l-.043.009c.003-.018.014-.033.017-.05a.5.5 0 0 0-.05-.26m.031-1.457a9 9 0 0 1 .176-.393l.004.005c0 .001.05.071.002.355a1.4 1.4 0 0 1-.057.2Zm1.54 2.615a.39.39 0 0 0 .328.032.5.5 0 0 0 .09.2.5.5 0 0 0 .108.083.5.5 0 0 0-.277.055l-.035.018.003-.056a.5.5 0 0 0-.217-.332m1.281-.799a.7.7 0 0 1 .103.216q.034.113.056.223l-.181-.068a12 12 0 0 1-.054-.44.3.3 0 0 1 .076.07m-1.365.247-.14.41-.074-.045-.013-.01.216-.36ZM7.5 16.41l.02-.113.011.01c.025.017.073.108.085.337a1.4 1.4 0 0 1 0 .2l-.16-.12c.01-.096.026-.206.044-.314m.257-10.955c-.028.023-.096.077-.31.038a1.2 1.2 0 0 1-.214-.055q.096-.103.186-.188.107.041.228.096l.142.064a.2.2 0 0 1-.032.045m.598-1.735a.9.9 0 0 1 .098.288 2 2 0 0 1 .034.248l-.126-.07a6 6 0 0 1-.007-.352zm-2.068.712a.9.9 0 0 1 .359-.605l.017-.013-.01.059a8 8 0 0 0-.075.49 6 6 0 0 0-.303.23 1 1 0 0 1 .012-.161m-1.422.865.004-.005c.02.179.048.355.073.493a8 8 0 0 0-.228.338 1 1 0 0 1-.02-.103.97.97 0 0 1 .171-.723M3.547 7.165l.009-.019c.048.161.101.317.147.439a7 7 0 0 0-.175.406L3.5 7.917a1 1 0 0 1 .048-.752m-.541 7.182.038.016c.148.058.296.112.413.152l.185.438a1 1 0 0 1-.154-.044.9.9 0 0 1-.285-.176.8.8 0 0 1-.164-.272 1 1 0 0 1-.033-.114m1.152 2.27a.4.4 0 0 1-.052-.087l.053.007c.158.02.31.037.443.045.076.103.174.234.274.363l.004.004a1 1 0 0 1-.175 0 .76.76 0 0 1-.547-.332m1.688 1.838a1 1 0 0 1-.1-.106l.055-.008c.157-.023.31-.05.43-.074l.022.017.329.247.023.02a1 1 0 0 1-.163.047.8.8 0 0 1-.596-.143m2.693 1.269a.9.9 0 0 1-.329.076.56.56 0 0 1-.288-.057 1 1 0 0 1-.118-.068l.048-.023c.144-.065.285-.133.394-.188.132.059.284.12.438.175a.7.7 0 0 1-.145.085m1.46-.535-.029.027a.5.5 0 0 0-.26-.291c.015 0 .036.005.048.005a.2.2 0 0 0 .042-.003.5.5 0 0 0 .186-.104l.029.062a.5.5 0 0 0 .174.194.5.5 0 0 0-.19.11m.846 1.069a.9.9 0 0 1-.267.161.9.9 0 0 1-.329.017q-.066-.012-.12-.026l.032-.026c.117-.092.235-.2.372-.325l.025-.022v.056a3 3 0 0 0 .403.045 1 1 0 0 1-.116.12m2.914.177a.9.9 0 0 1-.308-.007.9.9 0 0 1-.297-.17 1 1 0 0 1-.117-.12 4 4 0 0 0 .456-.053l.016.015c.092.085.21.192.325.282l.035.028a1 1 0 0 1-.11.025m.05-1.356a.5.5 0 0 0 .174-.194l.025-.053a.5.5 0 0 0 .19.095.2.2 0 0 0 .042.003c.012 0 .033-.004.048-.005a.5.5 0 0 0-.26.291L14 19.19a.5.5 0 0 0-.19-.11m2.261.668a.6.6 0 0 1-.285.053.9.9 0 0 1-.335-.08.7.7 0 0 1-.137-.08c.155-.057.308-.117.44-.176a10 10 0 0 0 .442.21 1 1 0 0 1-.125.073m2.116-1.319a.8.8 0 0 1-.619.172 1 1 0 0 1-.172-.05l.005-.006.369-.276c.119.022.271.05.427.073l.062.01a1 1 0 0 1-.072.077m1.647-1.802a.75.75 0 0 1-.552.324 1 1 0 0 1-.163 0l.005-.005c.1-.13.198-.26.274-.362.127-.009.282-.027.443-.046l.053-.007a.5.5 0 0 1-.06.096m1.13-2.174a.8.8 0 0 1-.16.275.9.9 0 0 1-.292.182 1 1 0 0 1-.154.043l.185-.437c.117-.04.266-.094.413-.152l.01-.005.028-.011a1 1 0 0 1-.03.105" style="fill:#4a230d;opacity:.71"/>				<path d="m13.806 19.694-.148-.14-.21.033a3.4 3.4 0 0 1-.463.052l-.677.033a1.6 1.6 0 0 0 .522.966 1.4 1.4 0 0 0 .465.265 1.3 1.3 0 0 0 .54.026 1.2 1.2 0 0 0 .483-.18 1.4 1.4 0 0 0 .357-.365s-.277-.193-.528-.393c-.127-.099-.251-.217-.34-.297m1.965-.783a8.4 8.4 0 0 1-1.276.462 1.6 1.6 0 0 0 .76.806 1.4 1.4 0 0 0 .515.12 1.05 1.05 0 0 0 .53-.109 1.24 1.24 0 0 0 .669-.75 6 6 0 0 1-.615-.244 11 11 0 0 1-.583-.285m1.873-1.179s-.066.055-.168.13l-.374.282a4 4 0 0 1-.39.257l-.182.111a1.64 1.64 0 0 0 .945.579 1.3 1.3 0 0 0 1.013-.264 1.36 1.36 0 0 0 .449-.9s-.34-.03-.663-.08c-.325-.049-.63-.115-.63-.115m2.137-1.691a7 7 0 0 1-.439.044l-.204.008s-.2.276-.41.546l-.456.506a1.6 1.6 0 0 0 1.054.303 1.23 1.23 0 0 0 .909-.522 1.06 1.06 0 0 0 .203-.48 1.4 1.4 0 0 0-.002-.507s-.334.062-.655.102m.991-2.143c-.31.123-.616.218-.616.218l-.073.201-.076.206c-.031.074-.07.15-.106.228l-.204.424a1.3 1.3 0 0 1-.1.188 1.55 1.55 0 0 0 1.094.012 1.4 1.4 0 0 0 .453-.283 1.25 1.25 0 0 0 .287-.463 1.3 1.3 0 0 0 .08-.514 1.4 1.4 0 0 0-.143-.493s-.3.151-.596.276m.9-2.754-.155.137a12 12 0 0 1-.89.66 9 9 0 0 1-.222 1.349 1.6 1.6 0 0 0 1.069-.278 1.3 1.3 0 0 0 .519-.916 1.3 1.3 0 0 0-.32-.952m-1.79-3.434s.152.306.27.629c.066.157.116.321.154.444l.065.204a1.64 1.64 0 0 0 .78-.784 1.28 1.28 0 0 0-.015-1.055 1.25 1.25 0 0 0-.753-.66s-.109.325-.232.628c-.06.151-.125.3-.18.412zm-.583-.703.103.187a1.65 1.65 0 0 0 .614-.923 1.27 1.27 0 0 0-.217-1.03 1.25 1.25 0 0 0-.865-.499s-.045.34-.108.662c-.03.16-.065.319-.097.439l-.053.196s.208.27.386.563c.095.141.175.293.237.405m-4.125-2.17c.11-.037.257-.084.398-.147a6 6 0 0 0 .563-.252l.025-.19c.015-.111.028-.266.035-.419.018-.305.014-.596.014-.596a.92.92 0 0 0-.725-.014.93.93 0 0 0-.44.622 2.5 2.5 0 0 0-.053 1.057s.073-.024.183-.061m1.891-.268.014.203a7 7 0 0 1 .547.405c.136.102.262.218.356.304l.158.143a1.66 1.66 0 0 0 .28-1.075 1.27 1.27 0 0 0-.54-.902 1.24 1.24 0 0 0-.98-.185s.07.336.115.66c.023.162.042.323.05.447m3.487 5.147.037.211c.026.126.041.297.059.467a5 5 0 0 1 .034.47l.007.213a1.62 1.62 0 0 0 .958-.548 1.267 1.267 0 0 0-.292-1.859s-.19.285-.388.545a7 7 0 0 1-.415.501m-10.002 9.87-.21-.031-.148.139c-.09.08-.214.198-.34.297-.252.2-.529.393-.529.393a1.4 1.4 0 0 0 .357.364 1.2 1.2 0 0 0 .483.18 1.3 1.3 0 0 0 .54-.025 1.4 1.4 0 0 0 .465-.265 1.6 1.6 0 0 0 .522-.966s-.339-.016-.677-.033a3.4 3.4 0 0 1-.463-.052m-2.323-.675s-.28.149-.583.285a6 6 0 0 1-.615.245 1.24 1.24 0 0 0 .668.75 1.05 1.05 0 0 0 .531.108 1.4 1.4 0 0 0 .516-.12 1.6 1.6 0 0 0 .759-.806 8.4 8.4 0 0 1-1.276-.462m-.94-.51a4 4 0 0 1-.39-.257l-.375-.281c-.102-.076-.168-.13-.168-.13s-.305.065-.63.114c-.323.05-.663.08-.663.08a1.36 1.36 0 0 0 .449.9 1.3 1.3 0 0 0 1.013.264 1.64 1.64 0 0 0 .945-.579ZM5.27 16.64c-.208-.27-.41-.546-.41-.546l-.203-.008a7 7 0 0 1-.44-.044c-.32-.04-.654-.102-.654-.102a1.4 1.4 0 0 0-.002.508 1.06 1.06 0 0 0 .203.479 1.23 1.23 0 0 0 .91.522 1.6 1.6 0 0 0 1.053-.303Zm-.867-1.276a1.3 1.3 0 0 1-.101-.188l-.204-.424c-.036-.078-.075-.154-.106-.228l-.076-.206-.073-.2s-.307-.096-.617-.22c-.294-.124-.595-.275-.595-.275a1.4 1.4 0 0 0-.144.493 1.3 1.3 0 0 0 .08.514 1.25 1.25 0 0 0 .288.463 1.4 1.4 0 0 0 .453.283 1.55 1.55 0 0 0 1.095-.012m-.81-2.073a9 9 0 0 1-.221-1.35s-.263-.174-.527-.374c-.132-.1-.264-.204-.363-.285l-.156-.137a1.3 1.3 0 0 0-.32.952 1.3 1.3 0 0 0 .52.916 1.6 1.6 0 0 0 1.067.278m-.285-2.213.007-.214a5 5 0 0 1 .034-.469c.018-.17.033-.341.06-.467l.036-.21s-.223-.24-.415-.502c-.198-.26-.388-.545-.388-.545a1.267 1.267 0 0 0-.292 1.859 1.62 1.62 0 0 0 .958.548m.41-2.146.071-.212c.043-.127.098-.298.17-.46.127-.335.287-.65.287-.65l-.074-.196c-.046-.12-.1-.28-.149-.443-.1-.325-.186-.672-.186-.672a1.24 1.24 0 0 0-.746.66 1.5 1.5 0 0 0-.07 1.11 1.65 1.65 0 0 0 .696.863m1.009-1.844.107-.192c.064-.115.148-.27.246-.415.182-.3.393-.575.393-.575l-.04-.21a7 7 0 0 1-.068-.466c-.043-.342-.067-.702-.067-.702a1.16 1.16 0 0 0-.843.483 1.47 1.47 0 0 0-.26 1.076 1.76 1.76 0 0 0 .532 1.001M7.88 4.48a5 5 0 0 0 .518.293 4 4 0 0 0 .369.173l.17.073a2.9 2.9 0 0 0 .005-1.116.98.98 0 0 0-.383-.676.79.79 0 0 0-.686-.02s-.019.307-.018.63c-.001.16.003.324.011.442Zm-1.72.87c.093-.086.217-.201.351-.303a7 7 0 0 1 .538-.4l.024-.214a7 7 0 0 1 .071-.468c.06-.34.143-.69.143-.69a1.08 1.08 0 0 0-.936.148 1.37 1.37 0 0 0-.557.925 1.9 1.9 0 0 0 .208 1.146s.063-.058.157-.143" style="fill:url(#linear-gradient)"/>				<path d="m13.806 19.694-.148-.14-.21.033a3.4 3.4 0 0 1-.463.052l-.677.033a1.6 1.6 0 0 0 .522.966 1.4 1.4 0 0 0 .465.265 1.3 1.3 0 0 0 .54.026 1.2 1.2 0 0 0 .483-.18 1.4 1.4 0 0 0 .357-.365s-.277-.193-.528-.393c-.127-.099-.251-.217-.34-.297m1.965-.783a8.4 8.4 0 0 1-1.276.462 1.6 1.6 0 0 0 .76.806 1.4 1.4 0 0 0 .515.12 1.05 1.05 0 0 0 .53-.109 1.24 1.24 0 0 0 .669-.75 6 6 0 0 1-.615-.244 11 11 0 0 1-.583-.285m1.873-1.179s-.066.055-.168.13l-.374.282a4 4 0 0 1-.39.257l-.182.111a1.64 1.64 0 0 0 .945.579 1.3 1.3 0 0 0 1.013-.264 1.36 1.36 0 0 0 .449-.9s-.34-.03-.663-.08c-.325-.049-.63-.115-.63-.115m2.137-1.691a7 7 0 0 1-.439.044l-.204.008s-.2.276-.41.546l-.456.506a1.6 1.6 0 0 0 1.054.303 1.23 1.23 0 0 0 .909-.522 1.06 1.06 0 0 0 .203-.48 1.4 1.4 0 0 0-.002-.507s-.334.062-.655.102m.991-2.143c-.31.123-.616.218-.616.218l-.073.201-.076.206c-.031.074-.07.15-.106.228l-.204.424a1.3 1.3 0 0 1-.1.188 1.55 1.55 0 0 0 1.094.012 1.4 1.4 0 0 0 .453-.283 1.25 1.25 0 0 0 .287-.463 1.3 1.3 0 0 0 .08-.514 1.4 1.4 0 0 0-.143-.493s-.3.151-.596.276m.9-2.754-.155.137a12 12 0 0 1-.89.66 9 9 0 0 1-.222 1.349 1.6 1.6 0 0 0 1.069-.278 1.3 1.3 0 0 0 .519-.916 1.3 1.3 0 0 0-.32-.952m-1.79-3.434s.152.306.27.629c.066.157.116.321.154.444l.065.204a1.64 1.64 0 0 0 .78-.784 1.28 1.28 0 0 0-.015-1.055 1.25 1.25 0 0 0-.753-.66s-.109.325-.232.628c-.06.151-.125.3-.18.412zm-.583-.703.103.187a1.65 1.65 0 0 0 .614-.923 1.27 1.27 0 0 0-.217-1.03 1.25 1.25 0 0 0-.865-.499s-.045.34-.108.662c-.03.16-.065.319-.097.439l-.053.196s.208.27.386.563c.095.141.175.293.237.405m-4.125-2.17c.11-.037.257-.084.398-.147a6 6 0 0 0 .563-.252l.025-.19c.015-.111.028-.266.035-.419.018-.305.014-.596.014-.596a.92.92 0 0 0-.725-.014.93.93 0 0 0-.44.622 2.5 2.5 0 0 0-.053 1.057s.073-.024.183-.061m1.891-.268.014.203a7 7 0 0 1 .547.405c.136.102.262.218.356.304l.158.143a1.66 1.66 0 0 0 .28-1.075 1.27 1.27 0 0 0-.54-.902 1.24 1.24 0 0 0-.98-.185s.07.336.115.66c.023.162.042.323.05.447m3.487 5.147.037.211c.026.126.041.297.059.467a5 5 0 0 1 .034.47l.007.213a1.62 1.62 0 0 0 .958-.548 1.267 1.267 0 0 0-.292-1.859s-.19.285-.388.545a7 7 0 0 1-.415.501m-10.002 9.87-.21-.031-.148.139c-.09.08-.214.198-.34.297-.252.2-.529.393-.529.393a1.4 1.4 0 0 0 .357.364 1.2 1.2 0 0 0 .483.18 1.3 1.3 0 0 0 .54-.025 1.4 1.4 0 0 0 .465-.265 1.6 1.6 0 0 0 .522-.966s-.339-.016-.677-.033a3.4 3.4 0 0 1-.463-.052m-2.323-.675s-.28.149-.583.285a6 6 0 0 1-.615.245 1.24 1.24 0 0 0 .668.75 1.05 1.05 0 0 0 .531.108 1.4 1.4 0 0 0 .516-.12 1.6 1.6 0 0 0 .759-.806 8.4 8.4 0 0 1-1.276-.462m-.94-.51a4 4 0 0 1-.39-.257l-.375-.281c-.102-.076-.168-.13-.168-.13s-.305.065-.63.114c-.323.05-.663.08-.663.08a1.36 1.36 0 0 0 .449.9 1.3 1.3 0 0 0 1.013.264 1.64 1.64 0 0 0 .945-.579ZM5.27 16.64c-.208-.27-.41-.546-.41-.546l-.203-.008a7 7 0 0 1-.44-.044c-.32-.04-.654-.102-.654-.102a1.4 1.4 0 0 0-.002.508 1.06 1.06 0 0 0 .203.479 1.23 1.23 0 0 0 .91.522 1.6 1.6 0 0 0 1.053-.303Zm-.867-1.276a1.3 1.3 0 0 1-.101-.188l-.204-.424c-.036-.078-.075-.154-.106-.228l-.076-.206-.073-.2s-.307-.096-.617-.22c-.294-.124-.595-.275-.595-.275a1.4 1.4 0 0 0-.144.493 1.3 1.3 0 0 0 .08.514 1.25 1.25 0 0 0 .288.463 1.4 1.4 0 0 0 .453.283 1.55 1.55 0 0 0 1.095-.012m-.81-2.073a9 9 0 0 1-.221-1.35s-.263-.174-.527-.374c-.132-.1-.264-.204-.363-.285l-.156-.137a1.3 1.3 0 0 0-.32.952 1.3 1.3 0 0 0 .52.916 1.6 1.6 0 0 0 1.067.278m-.285-2.213.007-.214a5 5 0 0 1 .034-.469c.018-.17.033-.341.06-.467l.036-.21s-.223-.24-.415-.502c-.198-.26-.388-.545-.388-.545a1.267 1.267 0 0 0-.292 1.859 1.62 1.62 0 0 0 .958.548m.41-2.146.071-.212c.043-.127.098-.298.17-.46.127-.335.287-.65.287-.65l-.074-.196c-.046-.12-.1-.28-.149-.443-.1-.325-.186-.672-.186-.672a1.24 1.24 0 0 0-.746.66 1.5 1.5 0 0 0-.07 1.11 1.65 1.65 0 0 0 .696.863m1.009-1.844.107-.192c.064-.115.148-.27.246-.415.182-.3.393-.575.393-.575l-.04-.21a7 7 0 0 1-.068-.466c-.043-.342-.067-.702-.067-.702a1.16 1.16 0 0 0-.843.483 1.47 1.47 0 0 0-.26 1.076 1.76 1.76 0 0 0 .532 1.001M7.88 4.48a5 5 0 0 0 .518.293 4 4 0 0 0 .369.173l.17.073a2.9 2.9 0 0 0 .005-1.116.98.98 0 0 0-.383-.676.79.79 0 0 0-.686-.02s-.019.307-.018.63c-.001.16.003.324.011.442Zm-1.72.87c.093-.086.217-.201.351-.303a7 7 0 0 1 .538-.4l.024-.214a7 7 0 0 1 .071-.468c.06-.34.143-.69.143-.69a1.08 1.08 0 0 0-.936.148 1.37 1.37 0 0 0-.557.925 1.9 1.9 0 0 0 .208 1.146s.063-.058.157-.143" style="fill:url(#linear-gradient-2)"/>				<path d="M12 6.022a5 5 0 1 1-5 5 5 5 0 0 1 5-5" style="fill-rule:evenodd;fill:url(#linear-gradient-3)"/>				<path d="M12 16.49a5.468 5.468 0 1 1 5.468-5.468A5.474 5.474 0 0 1 12 16.489m0-10.436a4.968 4.968 0 1 0 4.968 4.968A4.973 4.973 0 0 0 12 6.054" style="fill:url(#linear-gradient-4)"/>				<path d="m13.533 18.67.082-.175c.047-.107.109-.237.162-.385a10 10 0 0 0 .191-.578 1.1 1.1 0 0 0-.341-.185.74.74 0 0 0-.34-.041.65.65 0 0 0-.326.158 1.2 1.2 0 0 0-.28.303 2.6 2.6 0 0 0-.372 1.01s.307-.016.615-.031a3 3 0 0 0 .42-.048Z" style="fill:url(#linear-gradient-5)"/>				<path d="M15.446 18.016s.055-.31.087-.61a5 5 0 0 0 .036-.602.92.92 0 0 0-.716-.037.9.9 0 0 0-.277.23 1.2 1.2 0 0 0-.186.377 2.7 2.7 0 0 0-.099 1.06 7.6 7.6 0 0 0 1.155-.418" style="fill:url(#linear-gradient-6)"/>				<path d="M17.073 16.948s-.03-.318-.08-.618a10 10 0 0 0-.115-.585.83.83 0 0 0-.702.156.88.88 0 0 0-.291.707 2.5 2.5 0 0 0 .179 1.047l.164-.1a3 3 0 0 0 .354-.234l.339-.255c.093-.068.152-.118.152-.118" style="fill:url(#linear-gradient-7)"/>				<path d="m18.358 15.567-.065-.179a7 7 0 0 0-.168-.392c-.128-.281-.269-.539-.269-.539a1.2 1.2 0 0 0-.376.113.9.9 0 0 0-.26.222.97.97 0 0 0-.098.76 2.6 2.6 0 0 0 .45.97s.208-.23.415-.46z" style="fill:url(#linear-gradient-8)"/>				<path d="M19.315 13.847s-.176-.255-.364-.486a10 10 0 0 0-.41-.45 1.1 1.1 0 0 0-.324.212.7.7 0 0 0-.202.278.73.73 0 0 0-.024.363 1.2 1.2 0 0 0 .129.395 2.7 2.7 0 0 0 .688.817 1 1 0 0 0 .092-.17l.183-.384c.033-.07.069-.14.098-.206l.067-.187Z" style="fill:url(#linear-gradient-9)"/>				<path d="M19.75 9.86a6 6 0 0 0-.566-.233c-.287-.104-.566-.183-.566-.183a.93.93 0 0 0-.213.693.95.95 0 0 0 .473.602 2.5 2.5 0 0 0 .996.354l-.007-.194a4 4 0 0 0-.031-.425c-.016-.155-.03-.31-.053-.424Z" style="fill:url(#linear-gradient-10)"/>				<path d="m19.227 7.941-.19-.029a5 5 0 0 0-.416-.045c-.305-.024-.595-.025-.595-.025a.93.93 0 0 0-.024.726.94.94 0 0 0 .614.452 2.5 2.5 0 0 0 1.054.077l-.059-.185a4 4 0 0 0-.14-.402 6 6 0 0 0-.244-.569" style="fill:url(#linear-gradient-11)"/>				<path d="m18.272 6.255-.19.022a5 5 0 0 0-.414.066c-.3.058-.58.132-.58.132a.93.93 0 0 0 .165.708.94.94 0 0 0 .711.276 2.5 2.5 0 0 0 1.038-.206l-.106-.163c-.063-.097-.144-.229-.24-.35-.178-.254-.384-.485-.384-.485" style="fill:url(#linear-gradient-12)"/>				<path d="M19.812 11.841s-.244-.2-.489-.374a9 9 0 0 0-.336-.23l-.16-.097a.9.9 0 0 0-.384.617.93.93 0 0 0 .3.704 2.6 2.6 0 0 0 .868.603 8 8 0 0 0 .201-1.223" style="fill:url(#linear-gradient-13)"/>				<path d="m16.812 4.792-.186.048a5 5 0 0 0-.4.124c-.29.098-.557.211-.557.211a.93.93 0 0 0 .263.678.93.93 0 0 0 .742.174 2.5 2.5 0 0 0 .999-.348l-.127-.147c-.076-.087-.175-.207-.287-.314a6 6 0 0 0-.447-.426" style="fill:url(#linear-gradient-14)"/>				<path d="m10.467 18.67-.082-.175c-.047-.107-.109-.237-.162-.385a10 10 0 0 1-.191-.578 1.1 1.1 0 0 1 .341-.185.74.74 0 0 1 .34-.041.65.65 0 0 1 .326.158 1.2 1.2 0 0 1 .28.303 2.6 2.6 0 0 1 .372 1.01s-.307-.016-.615-.031a3 3 0 0 1-.42-.048Z" style="fill:url(#linear-gradient-15)"/>				<path d="M8.554 18.016s-.055-.31-.087-.61a5 5 0 0 1-.036-.602.92.92 0 0 1 .716-.037.9.9 0 0 1 .277.23 1.2 1.2 0 0 1 .186.377 2.7 2.7 0 0 1 .099 1.06 7.6 7.6 0 0 1-1.155-.418" style="fill:url(#linear-gradient-16)"/>				<path d="M6.927 16.948s.03-.318.08-.618c.048-.302.115-.585.115-.585a.83.83 0 0 1 .702.156.88.88 0 0 1 .291.707 2.5 2.5 0 0 1-.179 1.047l-.164-.1a3 3 0 0 1-.354-.234l-.339-.255c-.093-.068-.152-.118-.152-.118" style="fill:url(#linear-gradient-17)"/>				<path d="m5.642 15.567.065-.179c.04-.107.105-.253.168-.392.128-.281.269-.539.269-.539a1.2 1.2 0 0 1 .376.113.9.9 0 0 1 .26.222.97.97 0 0 1 .098.76 2.6 2.6 0 0 1-.45.97s-.208-.23-.415-.46z" style="fill:url(#linear-gradient-18)"/>				<path d="M4.686 13.847s.175-.255.363-.486c.202-.238.41-.45.41-.45a1.1 1.1 0 0 1 .324.212.7.7 0 0 1 .202.278.73.73 0 0 1 .024.363 1.2 1.2 0 0 1-.129.395 2.7 2.7 0 0 1-.688.817 1 1 0 0 1-.092-.17l-.183-.384c-.033-.07-.069-.14-.098-.206l-.067-.187Z" style="fill:url(#linear-gradient-19)"/>				<path d="M4.25 9.86a6 6 0 0 1 .566-.233c.287-.104.566-.183.566-.183a.93.93 0 0 1 .213.693.95.95 0 0 1-.473.602 2.5 2.5 0 0 1-.996.354l.007-.194a4 4 0 0 1 .031-.425c.016-.155.03-.31.053-.424Z" style="fill:url(#linear-gradient-20)"/>				<path d="M4.188 11.841s.244-.2.489-.374c.122-.088.244-.17.336-.23l.16-.097a.9.9 0 0 1 .384.617.93.93 0 0 1-.3.704 2.6 2.6 0 0 1-.868.603 8 8 0 0 1-.201-1.223" style="fill:url(#linear-gradient-21)"/>				<path d="m4.856 7.883.18-.022c.106-.012.25-.023.396-.027.29-.01.563.001.563.001a1.1 1.1 0 0 1-.015.766.9.9 0 0 1-.604.448 2.1 2.1 0 0 1-1 .031l.066-.192c.038-.115.088-.27.153-.417.115-.302.261-.588.261-.588" style="fill:url(#linear-gradient-22)"/>				<path d="m5.846 6.151.178.032c.105.02.247.052.388.09.28.075.542.167.542.167a1.07 1.07 0 0 1-.194.738.84.84 0 0 1-.686.256 2.1 2.1 0 0 1-.97-.265l.109-.167c.064-.1.148-.235.245-.358a7 7 0 0 1 .388-.493" style="fill:url(#linear-gradient-23)"/>				<path d="m7.303 4.679.172.06c.102.034.238.088.372.148.269.118.515.25.515.25a1.04 1.04 0 0 1-.284.701.82.82 0 0 1-.71.149 2.2 2.2 0 0 1-.925-.414l.127-.149c.077-.088.176-.21.288-.317.212-.228.445-.428.445-.428" style="fill:url(#linear-gradient-24)"/>				<g style="opacity:.08">					<path class="cls-30" d="m13.533 18.67.082-.175c.047-.107.109-.237.162-.385a10 10 0 0 0 .191-.578 1.1 1.1 0 0 0-.341-.185.74.74 0 0 0-.34-.041.65.65 0 0 0-.326.158 1.2 1.2 0 0 0-.28.303 2.6 2.6 0 0 0-.372 1.01s.307-.016.615-.031a3 3 0 0 0 .42-.048Z"/>					<path d="M13.366 17.549a.7.7 0 0 1 .189.038 1 1 0 0 1 .12.05c-.034.105-.08.246-.133.388-.041.114-.088.217-.128.306l-.026.058-.025.053-.055.009-.086.013a2 2 0 0 1-.311.032l-.289.015a2.2 2.2 0 0 1 .267-.606 1 1 0 0 1 .235-.251.4.4 0 0 1 .206-.102zm0-.25-.079.007a.65.65 0 0 0-.326.158 1.2 1.2 0 0 0-.28.303 2.6 2.6 0 0 0-.372 1.01s.307-.016.615-.031a3 3 0 0 0 .42-.048l.19-.029.08-.174c.048-.107.11-.237.163-.385a10 10 0 0 0 .191-.578 1.1 1.1 0 0 0-.341-.185 1 1 0 0 0-.261-.048" style="fill:url(#linear-gradient-25)"/>					<path class="cls-30" d="M15.446 18.016s.055-.31.087-.61a5 5 0 0 0 .036-.602.92.92 0 0 0-.716-.037.9.9 0 0 0-.277.23 1.2 1.2 0 0 0-.186.377 2.7 2.7 0 0 0-.099 1.06 7.6 7.6 0 0 0 1.155-.418"/>					<path d="M15.115 16.959a1 1 0 0 1 .2.028c-.004.11-.013.253-.03.393a9 9 0 0 1-.065.472c-.157.065-.473.181-.694.258a2.4 2.4 0 0 1 .103-.66 1 1 0 0 1 .143-.299.6.6 0 0 1 .197-.162.3.3 0 0 1 .146-.03m0-.25a.56.56 0 0 0-.262.059.9.9 0 0 0-.277.228 1.2 1.2 0 0 0-.186.378 2.7 2.7 0 0 0-.099 1.06l.005.002a8 8 0 0 0 1.15-.42s.055-.31.087-.61a5 5 0 0 0 .036-.602 1.4 1.4 0 0 0-.454-.095" style="fill:url(#linear-gradient-26)"/>					<path class="cls-30" d="M17.073 16.948s-.03-.318-.08-.618a10 10 0 0 0-.115-.585.83.83 0 0 0-.702.156.88.88 0 0 0-.291.707 2.5 2.5 0 0 0 .179 1.047l.164-.1a3 3 0 0 0 .354-.234l.339-.255c.093-.068.152-.118.152-.118"/>					<path d="M16.674 15.981a9 9 0 0 1 .136.856l-.04.03-.28.211-.068.051a2 2 0 0 1-.218.147 2 2 0 0 1-.07-.655.66.66 0 0 1 .214-.538.46.46 0 0 1 .326-.102m.007-.25a.7.7 0 0 0-.505.17.88.88 0 0 0-.291.707 2.5 2.5 0 0 0 .179 1.047l.164-.1a3 3 0 0 0 .354-.233l.34-.256c.092-.068.151-.118.151-.118s-.03-.318-.08-.618a10 10 0 0 0-.114-.585 2 2 0 0 0-.198-.014" style="fill:url(#linear-gradient-27)"/>					<path class="cls-30" d="m18.358 15.567-.065-.179a7 7 0 0 0-.168-.392c-.128-.281-.269-.539-.269-.539a1.2 1.2 0 0 0-.376.113.9.9 0 0 0-.26.222.97.97 0 0 0-.098.76 2.6 2.6 0 0 0 .45.97s.208-.23.415-.46z"/>					<path d="M17.723 14.74a9 9 0 0 1 .335.733l.019.053-.276.37-.196.217a2.1 2.1 0 0 1-.237-.604.75.75 0 0 1 .044-.558.6.6 0 0 1 .185-.16 1 1 0 0 1 .126-.05m.133-.284a1.2 1.2 0 0 0-.376.113.9.9 0 0 0-.26.222.97.97 0 0 0-.098.76 2.6 2.6 0 0 0 .45.97s.208-.23.415-.46l.37-.495-.064-.179a7 7 0 0 0-.168-.392c-.128-.281-.269-.539-.269-.539" style="fill:url(#linear-gradient-28)"/>					<path class="cls-30" d="M19.315 13.847s-.176-.255-.364-.486a10 10 0 0 0-.41-.45 1.1 1.1 0 0 0-.324.212.7.7 0 0 0-.202.278.73.73 0 0 0-.024.363 1.2 1.2 0 0 0 .129.395 2.7 2.7 0 0 0 .688.817 1 1 0 0 0 .092-.17l.183-.384c.033-.07.069-.14.098-.206l.067-.187Z"/>					<path d="M18.491 13.221c.074.08.171.186.266.298.108.133.211.273.278.366l-.022.06-.024.065-.038.107q-.026.06-.057.121l-.036.076-.124.258a2.2 2.2 0 0 1-.391-.527.9.9 0 0 1-.104-.315.5.5 0 0 1 .011-.246.5.5 0 0 1 .143-.184.6.6 0 0 1 .098-.079m.05-.31a1.1 1.1 0 0 0-.324.212.7.7 0 0 0-.202.278.73.73 0 0 0-.024.363 1.2 1.2 0 0 0 .129.395 2.7 2.7 0 0 0 .688.817 1 1 0 0 0 .092-.17l.183-.384c.033-.07.069-.14.098-.206l.067-.186.066-.183s-.175-.255-.363-.486a10 10 0 0 0-.41-.45" style="fill:url(#linear-gradient-29)"/>					<path class="cls-30" d="M19.75 9.86a6 6 0 0 0-.566-.233c-.287-.104-.566-.183-.566-.183a.93.93 0 0 0-.213.693.95.95 0 0 0 .473.602 2.5 2.5 0 0 0 .996.354l-.007-.194a4 4 0 0 0-.031-.425c-.016-.155-.03-.31-.053-.424Z"/>					<path d="M18.726 9.737a10 10 0 0 1 .377.126c.162.056.32.123.423.169l.012.07c.02.09.03.209.043.33l.007.071c.011.097.02.194.026.283a2.2 2.2 0 0 1-.604-.26.7.7 0 0 1-.357-.421.6.6 0 0 1 .073-.368m-.108-.293a.93.93 0 0 0-.213.693.95.95 0 0 0 .473.602 2.5 2.5 0 0 0 .996.354l-.007-.194a4 4 0 0 0-.031-.425c-.016-.155-.03-.31-.053-.424l-.033-.19a6 6 0 0 0-.566-.233c-.287-.104-.566-.183-.566-.183" style="fill:url(#linear-gradient-30)"/>					<path class="cls-30" d="m19.227 7.941-.19-.029a5 5 0 0 0-.416-.045c-.305-.024-.595-.025-.595-.025a.93.93 0 0 0-.024.726.94.94 0 0 0 .614.452 2.5 2.5 0 0 0 1.054.077l-.059-.185a4 4 0 0 0-.14-.402 6 6 0 0 0-.244-.569"/>					<path d="M18.208 8.096c.107.003.25.01.396.02.145.01.29.027.396.043l.058.01c.048.104.12.268.183.44q.053.128.095.261h-.028a2 2 0 0 1-.622-.09.7.7 0 0 1-.454-.31.6.6 0 0 1-.024-.374m-.182-.254a.93.93 0 0 0-.024.726.94.94 0 0 0 .614.452 2.3 2.3 0 0 0 .692.1 3 3 0 0 0 .362-.023l-.059-.185a4 4 0 0 0-.14-.402 6 6 0 0 0-.244-.569l-.19-.029a5 5 0 0 0-.416-.045c-.305-.024-.595-.025-.595-.025" style="fill:url(#linear-gradient-31)"/>					<path class="cls-30" d="m18.272 6.255-.19.022a5 5 0 0 0-.414.066c-.3.058-.58.132-.58.132a.93.93 0 0 0 .165.708.94.94 0 0 0 .711.276 2.5 2.5 0 0 0 1.038-.206l-.106-.163c-.063-.097-.144-.229-.24-.35-.178-.254-.384-.485-.384-.485"/>					<path d="M18.169 6.518c.074.089.186.228.291.376.06.076.114.157.16.229a2.1 2.1 0 0 1-.578.088l-.073-.002a.7.7 0 0 1-.52-.18.6.6 0 0 1-.12-.356 8 8 0 0 1 .782-.148zm.103-.263-.19.022a5 5 0 0 0-.414.066c-.3.058-.58.132-.58.132a.93.93 0 0 0 .166.708.93.93 0 0 0 .71.276l.078.002a2.5 2.5 0 0 0 .96-.208l-.105-.163c-.063-.097-.145-.23-.24-.35a6 6 0 0 0-.385-.485" style="fill:url(#linear-gradient-32)"/>					<path class="cls-30" d="M19.812 11.841s-.244-.2-.489-.374a9 9 0 0 0-.336-.23l-.16-.097a.9.9 0 0 0-.384.617.93.93 0 0 0 .3.704 2.6 2.6 0 0 0 .868.603 8 8 0 0 0 .201-1.223"/>					<path d="M18.859 11.452a9 9 0 0 1 .698.505c-.02.17-.073.5-.118.74a2.3 2.3 0 0 1-.515-.409.7.7 0 0 1-.231-.525.5.5 0 0 1 .166-.311m-.032-.312a.9.9 0 0 0-.384.617.93.93 0 0 0 .3.704 2.6 2.6 0 0 0 .868.603 8 8 0 0 0 .201-1.223s-.244-.2-.489-.374a9 9 0 0 0-.335-.23z" style="fill:url(#linear-gradient-33)"/>					<path class="cls-30" d="m16.812 4.792-.186.048a5 5 0 0 0-.4.124c-.29.098-.557.211-.557.211a.93.93 0 0 0 .263.678.93.93 0 0 0 .742.174 2.5 2.5 0 0 0 .999-.348l-.127-.147c-.076-.087-.175-.207-.287-.314a6 6 0 0 0-.447-.426"/>					<path d="M16.746 5.067c.086.077.216.2.34.332.07.067.135.14.191.204a2 2 0 0 1-.633.176 1 1 0 0 1-.147.01.6.6 0 0 1-.392-.117.6.6 0 0 1-.17-.335c.1-.04.234-.09.373-.137a5 5 0 0 1 .381-.118zm.066-.275-.186.048a5 5 0 0 0-.4.124c-.29.098-.557.211-.557.211a.93.93 0 0 0 .263.678.85.85 0 0 0 .565.185 2 2 0 0 0 .177-.011 2.5 2.5 0 0 0 .999-.348l-.127-.147c-.076-.087-.175-.207-.287-.314a6 6 0 0 0-.447-.426" style="fill:url(#linear-gradient-34)"/>					<path class="cls-30" d="m10.467 18.67-.082-.175c-.047-.107-.109-.237-.162-.385a10 10 0 0 1-.191-.578 1.1 1.1 0 0 1 .341-.185.74.74 0 0 1 .34-.041.65.65 0 0 1 .326.158 1.2 1.2 0 0 1 .28.303 2.6 2.6 0 0 1 .372 1.01s-.307-.016-.615-.031a3 3 0 0 1-.42-.048Z"/>					<path d="m10.634 17.549.042.004a.44.44 0 0 1 .217.114.9.9 0 0 1 .217.238 2.2 2.2 0 0 1 .268.606l-.3-.015a2 2 0 0 1-.3-.032l-.083-.013-.059-.009-.022-.049-.028-.062c-.04-.089-.087-.192-.129-.307a9 9 0 0 1-.131-.387 1 1 0 0 1 .12-.05.7.7 0 0 1 .188-.038m0-.25a1 1 0 0 0-.261.048 1.1 1.1 0 0 0-.341.185s.083.285.19.578c.054.148.116.278.163.385l.082.174.19.03a3 3 0 0 0 .42.047l.614.03a2.6 2.6 0 0 0-.372-1.01 1.2 1.2 0 0 0-.28-.302.65.65 0 0 0-.326-.158z" style="fill:url(#linear-gradient-35)"/>					<path class="cls-30" d="M8.554 18.016s-.055-.31-.087-.61a5 5 0 0 1-.036-.602.92.92 0 0 1 .716-.037.9.9 0 0 1 .277.23 1.2 1.2 0 0 1 .186.377 2.7 2.7 0 0 1 .099 1.06 7.6 7.6 0 0 1-1.155-.418"/>					<path d="M8.885 16.959a.3.3 0 0 1 .141.027.6.6 0 0 1 .2.163 1 1 0 0 1 .144.296 2.6 2.6 0 0 1 .107.663 14 14 0 0 1-.697-.256 10 10 0 0 1-.065-.477 5 5 0 0 1-.03-.388 1 1 0 0 1 .2-.029m0-.25a1.4 1.4 0 0 0-.454.096 5 5 0 0 0 .036.602c.032.3.087.61.087.61a8 8 0 0 0 1.15.42l.005-.002a2.7 2.7 0 0 0-.1-1.06 1.2 1.2 0 0 0-.185-.378.9.9 0 0 0-.277-.229.56.56 0 0 0-.262-.059" style="fill:url(#linear-gradient-36)"/>					<path class="cls-30" d="M6.927 16.948s.03-.318.08-.618c.048-.302.115-.585.115-.585a.83.83 0 0 1 .702.156.88.88 0 0 1 .291.707 2.5 2.5 0 0 1-.179 1.047l-.164-.1a3 3 0 0 1-.354-.234l-.339-.255c-.093-.068-.152-.118-.152-.118"/>					<path d="M7.326 15.981a.5.5 0 0 1 .352.123.67.67 0 0 1 .188.521 2 2 0 0 1-.07.651 2 2 0 0 1-.228-.154l-.058-.044-.283-.213-.037-.028a10 10 0 0 1 .136-.856m-.007-.25a2 2 0 0 0-.197.014s-.067.283-.115.585c-.05.3-.08.618-.08.618s.059.05.152.118l.339.255a3 3 0 0 0 .354.233l.164.1a2.5 2.5 0 0 0 .18-1.046.88.88 0 0 0-.292-.707.7.7 0 0 0-.505-.17" style="fill:url(#linear-gradient-37)"/>					<path class="cls-30" d="m5.642 15.567.065-.179c.04-.107.105-.253.168-.392.128-.281.269-.539.269-.539a1.2 1.2 0 0 1 .376.113.9.9 0 0 1 .26.222.97.97 0 0 1 .098.76 2.6 2.6 0 0 1-.45.97s-.208-.23-.415-.46z"/>					<path d="M6.277 14.74a1 1 0 0 1 .123.05.6.6 0 0 1 .183.155.74.74 0 0 1 .05.556 2.1 2.1 0 0 1-.238.612l-.182-.2-.29-.388.018-.049a9 9 0 0 1 .336-.735m-.133-.284s-.14.258-.269.539a7 7 0 0 0-.168.392l-.065.18.371.495.415.459a2.6 2.6 0 0 0 .45-.97.97.97 0 0 0-.097-.76.9.9 0 0 0-.26-.222 1.2 1.2 0 0 0-.377-.113" style="fill:url(#linear-gradient-38)"/>					<path class="cls-30" d="M4.686 13.847s.175-.255.363-.486c.202-.238.41-.45.41-.45a1.1 1.1 0 0 1 .324.212.7.7 0 0 1 .202.278.73.73 0 0 1 .024.363 1.2 1.2 0 0 1-.129.395 2.7 2.7 0 0 1-.688.817 1 1 0 0 1-.092-.17l-.183-.384c-.033-.07-.069-.14-.098-.206l-.067-.187Z"/>					<path d="M5.508 13.222a1 1 0 0 1 .109.087.45.45 0 0 1 .135.182.5.5 0 0 1 .008.246.9.9 0 0 1-.102.308 2.3 2.3 0 0 1-.392.527l-.123-.257-.038-.078c-.02-.04-.04-.081-.05-.106l-.068-.187-.022-.06c.066-.091.17-.231.275-.361.096-.114.194-.221.268-.301m-.05-.311s-.207.212-.409.45c-.188.231-.363.486-.363.486l.066.183.067.186.098.206.183.384a1 1 0 0 0 .092.17 2.7 2.7 0 0 0 .688-.817 1.2 1.2 0 0 0 .129-.395.73.73 0 0 0-.024-.363.7.7 0 0 0-.202-.278 1.1 1.1 0 0 0-.324-.212" style="fill:url(#linear-gradient-39)"/>					<path class="cls-30" d="M4.25 9.86a6 6 0 0 1 .566-.233c.287-.104.566-.183.566-.183a.93.93 0 0 1 .213.693.95.95 0 0 1-.473.602 2.5 2.5 0 0 1-.996.354l.007-.194a4 4 0 0 1 .031-.425c.016-.155.03-.31.053-.424Z"/>					<path d="M5.274 9.737a.6.6 0 0 1 .076.35.7.7 0 0 1-.363.441 2.1 2.1 0 0 1-.6.258 5 5 0 0 1 .026-.287l.006-.061a3 3 0 0 1 .045-.345l.01-.061a6 6 0 0 1 .427-.17 9 9 0 0 1 .373-.125m.108-.293s-.28.079-.566.183a6 6 0 0 0-.566.232l-.033.191c-.024.114-.037.269-.053.424a4 4 0 0 0-.031.425l-.007.194a2.5 2.5 0 0 0 .996-.354.95.95 0 0 0 .473-.602.93.93 0 0 0-.213-.693" style="fill:url(#linear-gradient-40)"/>					<path class="cls-30" d="M4.188 11.841s.244-.2.489-.374c.122-.088.244-.17.336-.23l.16-.097a.9.9 0 0 1 .384.617.93.93 0 0 1-.3.704 2.6 2.6 0 0 1-.868.603 8 8 0 0 1-.201-1.223"/>					<path d="M5.141 11.452a.5.5 0 0 1 .166.319.7.7 0 0 1-.231.518 2.3 2.3 0 0 1-.515.409 15 15 0 0 1-.118-.74 9 9 0 0 1 .698-.506m.032-.312-.16.097c-.092.06-.214.142-.336.23-.245.174-.49.374-.49.374a8 8 0 0 0 .202 1.222 2.6 2.6 0 0 0 .868-.602.93.93 0 0 0 .3-.705.9.9 0 0 0-.384-.616" style="fill:url(#linear-gradient-41)"/>					<path class="cls-30" d="m4.856 7.883.18-.022c.106-.012.25-.023.396-.027.29-.01.563.001.563.001a1.1 1.1 0 0 1-.015.766.9.9 0 0 1-.604.448 2.1 2.1 0 0 1-1 .031l.066-.192c.038-.115.088-.27.153-.417.115-.302.261-.588.261-.588"/>					<path d="M5.69 8.08h.106a.7.7 0 0 1-.038.405.66.66 0 0 1-.455.325 1.6 1.6 0 0 1-.473.065q-.059 0-.119-.004c.031-.092.07-.2.118-.31a6 6 0 0 1 .192-.446l.045-.005a7 7 0 0 1 .624-.03m0-.25a7 7 0 0 0-.654.031l-.18.022s-.146.286-.26.588c-.066.148-.116.302-.154.417-.04.115-.065.192-.065.192a2.4 2.4 0 0 0 .453.045 1.9 1.9 0 0 0 .546-.076.9.9 0 0 0 .604-.448 1.1 1.1 0 0 0 .015-.766s-.13-.006-.304-.006" style="fill:url(#linear-gradient-42)"/>					<path class="cls-30" d="m5.846 6.151.178.032c.105.02.247.052.388.09.28.075.542.167.542.167a1.07 1.07 0 0 1-.194.738.84.84 0 0 1-.686.256 2.1 2.1 0 0 1-.97-.265l.109-.167c.064-.1.148-.235.245-.358a7 7 0 0 1 .388-.493"/>					<path d="m5.943 6.423.037.006a7 7 0 0 1 .723.19.7.7 0 0 1-.129.391.6.6 0 0 1-.496.174h-.004a1.7 1.7 0 0 1-.602-.122 4 4 0 0 1 .19-.274c.1-.141.208-.276.281-.365m-.097-.272s-.206.234-.388.493c-.097.123-.18.259-.245.358l-.108.167a2.1 2.1 0 0 0 .969.265l.042.001a.82.82 0 0 0 .644-.257 1.07 1.07 0 0 0 .194-.738s-.261-.092-.542-.167a5 5 0 0 0-.387-.09z" style="fill:url(#linear-gradient-43)"/>					<path class="cls-30" d="m7.303 4.679.172.06c.102.034.238.088.372.148.269.118.515.25.515.25a1.04 1.04 0 0 1-.284.701.82.82 0 0 1-.71.149 2.2 2.2 0 0 1-.925-.414l.127-.149c.077-.088.176-.21.288-.317.212-.228.445-.428.445-.428"/>					<path d="m7.36 4.963.034.012a7 7 0 0 1 .698.304.7.7 0 0 1-.174.368.5.5 0 0 1-.332.111 1 1 0 0 1-.18-.018 1.8 1.8 0 0 1-.588-.22 4 4 0 0 1 .223-.243c.114-.122.235-.237.319-.314m-.057-.284s-.233.2-.445.428c-.112.107-.211.229-.288.317l-.127.149a2.2 2.2 0 0 0 .925.414 1 1 0 0 0 .218.021.74.74 0 0 0 .492-.17 1.04 1.04 0 0 0 .285-.701s-.247-.132-.516-.25a5 5 0 0 0-.372-.149z" style="fill:url(#linear-gradient-44)"/>				</g>			</g>			<path d="m16.896 11.79-.16.056-.009.58-.583.001v.286h.536a4.98 4.98 0 0 1-2.493 2.863h-.586l-.144.291a5 5 0 0 1-1.494.253c-.02 0-.038-.006-.058-.006v-1.401l1.695.004v-.572h-.282v.286h-1.413v-.573l.283-.286h.283v-.286l.282-.573h1.13v-.286h-.565v-.286l.565-1.145h.566l.018-.16a1.4 1.4 0 0 1 1.094.01l.018.15h.565l.489.251.09.155.218-.06a5 5 0 0 1-.045.447m-9.397 1.54a2.7 2.7 0 0 1 .884-.33c.645.006 2.109 1.145 2.674 1.145v.286l-.777 1.377A5 5 0 0 1 7.5 13.33m8.1-5.35-.012.061c.008-.036.003-.013-.002.007a.32.32 0 0 1-.25.272l-2.752.876V9.19l-.085.031c-.093.054.024.09-.01.178l-.004.055-.066 1.571c-.02.132.008.154.123.191l.472.218c.103.02.202.091.207.17l-.003.206q-.006.084-.061.104a.1.1 0 0 1-.044.005h-2.29a.113.113 0 0 1-.124-.107v-.247c-.001-.032.025-.063.024-.052.02-.023.045-.04.021-.018l.046-.031c.042-.024.08-.039.037-.019.055-.025.09-.037.06-.025l.053-.02h.002c.087-.029.17-.05.034-.01.17-.05.277-.076.169-.047.137-.036.207-.055.15-.041.143-.034.048-.056.118-.077.1-.03.14-.032.12-.2V11l-.004-.019-.06-1.584a.44.44 0 0 0-.18-.205l-2.854-.88v.638a.63.63 0 0 1 .403.169l-.004.249h.695v.198h-.842v.574a1.34 1.34 0 0 1 .675.284v.573H9.08v1.145h.282l.283.572h.565l.492.982a23 23 0 0 1-2.317-.975 3.3 3.3 0 0 0-.977.44 5 5 0 0 1-.348-1.087l.177.1.43-.032v-1.145h-.283v-.573a1.13 1.13 0 0 1 .653-.283v-.575h-.613l-.167-.07c.015-.042.024-.087.04-.128h.594v-.251a.7.7 0 0 1 .423-.167v-.72a.7.7 0 0 1-.115-.369 5 5 0 0 1 .397-.416l1.592-.005v-.45h.128v.45l.971-.004c.132.003.202-.05.208-.212l-.002-.504a1.17 1.17 0 0 1 .241-.578c.078-.004.151-.023.23-.023.09 0 .175.021.264.026a.82.82 0 0 1 .25.576l.005.501c-.006.135.033.217.198.214l.813.003v-.45h.128v.45l1.675.003c.013 0 .025.005.039.006q.145.132.28.276a2 2 0 0 1-.016.255m-4.662 3.422.004-.001h-.002Z" style="fill-rule:evenodd;fill:url(#linear-gradient-45)" id="Layer_11" data-name="Layer 11"/>		</svg>`;
+          #slotOriginalClass = {};
+          constructor(vehicles = [], options = {}) {
+            this.container = options.container ?? document.body;
+            this.clear();
+            this.treeHeaders = options.headers ?? this.treeHeaders;
+            this.#setVehicles = vehicles;
+            if (vehicles?.length) this.render(vehicles);
+          }
+          #drawArrows() {
+            let canvas = this.container?.querySelector(".wt-tree-canvas") ?? this.container?.parentElement?.querySelector(".wt-tree-canvas");
+            let wrapper = this.container.querySelector(".wt-tree_wrapper");
+            if (!canvas || !wrapper) return false;
+            canvas.width = wrapper.clientWidth;
+            canvas.height = this.container.clientHeight;
+            let drawer = new ArrowDrawer(this.container.querySelector(".wt-tree_wrapper"), canvas);
+            let ctx = drawer.getCtx();
+            ctx.fillStyle = "#607D8B";
+            ctx.fillRect(toPos[0] - drawer.canvasPos[0], toPos[1] - drawer.canvasPos[1], 10, 10);
+            ctx.fillRect(fromPos[0] - drawer.canvasPos[0], fromPos[1] - drawer.canvasPos[1], 10, 10);
+            this.container.querySelectorAll("td > [data-unit-req]").forEach(el => {
+              if (!this.container.contains(el)) return;
+              let reqAir = el.getAttribute("data-unit-req");
+              let reqEl = this.container.querySelector(`[data-unit-id="${reqAir}"]`);
+              if (!reqEl || !reqAir) return;
+              if (!el.closest(".wt-tree_group")) {
+                let reqUnitGroup = reqEl.closest(".wt-tree_group");
+                if (reqUnitGroup) return drawer.draw(reqUnitGroup, el);
+              };
+              drawer.draw(reqEl, el);
+            });
+          }
+          #romanToInt(roman) {
+            if (typeof roman == "number") return roman;
+            if (typeof roman !== "string") return NaN;
+            const map = {
+              I: 1,
+              V: 5,
+              X: 10,
+              L: 50,
+              C: 100,
+              D: 500,
+              M: 1000
+            };
+            let total = 0,
+              prev = 0;
+            for (let i = roman.length - 1; i >= 0; i--) {
+              const curr = map[roman[i].toUpperCase()] || 0;
+              if (curr < prev) {
+                total -= curr;
+              } else {
+                total += curr;
+              }
+              prev = curr;
+            }
+            return total;
+          }
+          #intToRoman(num) {
+            if (isNaN(num))
+              return NaN;
+            var digits = String(+num).split(""),
+            key = ["","C","CC","CCC","CD","D","DC","DCC","DCCC","CM",
+               "","X","XX","XXX","XL","L","LX","LXX","LXXX","XC",
+               "","I","II","III","IV","V","VI","VII","VIII","IX"],
+            roman = "",
+            i = 3;
+            while (i--)
+              roman = (key[+digits.pop() + (i * 10)] || "") + roman;
+            return Array(+digits.join("") + 1).join("M") + roman;
+          }
+          setCell(x, y, element) {
+            if (this.#grid[y] && this.#grid[y][x]) {
+              this.#grid[y][x].appendChild(element);
+            }
+          }
+          getCell(x, y) {
+            return this.#grid[y]?.[x] ?? null;
+          }
+          removeCell(x, y) {
+            if (this.#grid[y] && this.#grid[y][x]) {
+              this.#grid[y][x].innerHTML = "";
+            }
+          }
+          clear() {
+            this.container?.querySelector(".wt-tree_instance")?.remove();
+            this.treeInstance?.remove();
+            this.#grid = [];
+            this.#rankVehicleData = {};
+            this.#slotOriginalClass = {};
+          }
+          render(vehicles = this.#setVehicles, options = {}) {
+            if (typeof vehicles != "object" || vehicles?.length == 0) vehicles = [];
+            this.clear();
+            let arrowInstance = document.createElement("div");
+            let arrowCanvas = document.createElement("canvas");
+            arrowInstance.appendChild(arrowCanvas);
+            arrowInstance.setAttribute("class", "wt-tree_arrows");
+            arrowCanvas.setAttribute("class", "wt-tree-canvas");
+            arrowCanvas.style.position = "absolute";
+            arrowCanvas.style.top = 0;
+            arrowCanvas.style.left = 0;
+            arrowCanvas.style.width = "100%";
+            arrowCanvas.style.height = "100%";
+            this.treeInstance = document.createElement("div");
+            this.treeInstance.setAttribute("class", "wt-tree_instance");
+            this.treeInstance.setAttribute("style", `--wt-tree-l-width: ${this.#settings.treeLeftWidth}px; --wt-tree-r-width: ${this.#settings.treeRightWidth}px; --wt-tree-minwidth: ${this.#settings.treeMinWidth}px;`);
+            this.#createTreeHeader(this.treeHeaders, this.treeInstance);
+            this.#setVehicles = vehicles;
+            this.#rankVehicleData = {};
+            vehicles.forEach((vehicle) => {
+              let rank, position, id, req, name, img, isPremium, isSquadron, backupImg, relativePos, br, showBR, isReserve, isNew, isHidden, mobileY, title;
+              if ("Unit" in window && vehicle instanceof window.Unit) {
+                rank = vehicle?.getUnitRank();
+                position = vehicle?.techTreePosition ?? vehicle?.position;
+                relativePos = vehicle?.techTreePosition?.relativeX ? {
+                  x: vehicle?.techTreePosition?.relativeX,
+                  y: vehicle?.techTreePosition?.relativeY
+                } : null;
+                mobileY = vehicle?.techTreePosition?.mobileY ?? null;
+                id = vehicle?.getUnitId?.();
+                req = vehicle?.getUnitReqUnit?.();
+                name = vehicle?.getUnitShopName?.();
+                img = vehicle?.getUnitShopImage?.();
+                br = vehicle?.getUnitBattleRating?.();
+                showBR = vehicle?.getUnitShowBattleRating?.() ?? null;
+                isReserve = vehicle?.getUnitIsReserve?.() ?? null;
+                isHidden = vehicle?.getUnitIsHidden?.() ?? false;
+                backupImg = vehicle?.getUnitIcon?.();
+                isPremium = vehicle?.getUnitOtherInfo?.()?.isPremium;
+                isSquadron = vehicle?.getUnitOtherInfo?.()?.isSquadronVehicle;
+                isNew = (vehicle?.getUnitIsFuture?.() || vehicle?.getUnitIsNew?.()) ?? false;
+                let {startPS, endPS, endRS} = vehicle?.getUnitOtherInfo?.() ?? {startPS: null, endPS: null, endRS: null};
+                let currDate = new Date();
+                if (startPS)
+                  startPS = new Date(startPS);
+                if (endPS)
+                  endPS =     new Date(endPS);
+                if(endRS)
+                  endRS =     new Date(endRS);
+                title = 
+                (vehicle?.getUnitIsFuture?.() ? `This vehicle is releasing ${vehicle?.getUnitReleaseDate?.()?.toLocaleString?.('en-US', {month: 'short', day: 'numeric', year: 'numeric'}) ?? "soon"}.  \n` : "")            +
+                (endRS&&endRS>currDate? `This vehicle will no longer be available to research after ${new Date(endRS)?.toLocaleString?.('en-US', {month: 'short', day: 'numeric', year: 'numeric'}) ?? "a while"}.  \n` : "")+
+                (startPS && startPS>currDate?`This vehicle will become availabe to purchase after ${startPS?.toLocaleString?.('en-US', {month: 'short', day: 'numeric', year: 'numeric'}) ?? "a while"}.  \n`: "")           +     
+                (endPS && endPS > currDate?`This vehicle will become unable to purchase after ${endPS?.toLocaleString?.('en-US', {month: 'short', day: 'numeric', year: 'numeric'}) ?? "a while"}.  \n`: "")                 ;     
+                if (relativePos?.x == -1 && relativePos?.y == -1) relativePos = null;
+              }
+              mobileY = mobileY ?? null;
+              rank = rank ?? vehicle?.rank ?? vehicle?.tier ?? vehicle?.unitRank ?? "I";
+              if(typeof rank == "number")
+                rank = this.#intToRoman(rank);
+              isNew = isNew ?? vehicle?.isNew ?? vehicle?.isRecentlyReleased ?? vehicle?.unitIsNew;
+              id = id ?? vehicle?.id ?? vehicle?.unitId;
+              isHidden = isHidden ?? vehicle?.isHidden ?? vehicle?.unitIsHidden ?? vehicle?.hidden ?? false;
+              img = img ?? vehicle.image ?? vehicle?.imgURL ?? vehicle?.unitImageURL;
+              br = br ?? vehicle?.unitBR ?? vehicle?.battleRating ?? vehicle?.unitBattleRating ?? "1.0";
+              showBR = showBR ?? vehicle?.unitShowBR ?? vehicle?.showBR ?? vehicle?.showBattleRating ?? true;
+              isReserve = isReserve ?? unit.unitIsReserve ?? unit.reserve ?? unit.isReserve;
+              name = name ?? vehicle?.name ?? vehicle?.unitName ?? vehicle?.text ?? id;
+              isPremium = isPremium ?? vehicle?.isPremium ?? vehicle?.premium ?? vehicle?.unitIsPremium ?? false;
+              isSquadron = isSquadron ?? vehicle?.isSquadron ?? vehicle?.squadronVehicle ?? vehicle?.unitIsSquadron ?? false;
+              req = req ?? vehicle?.reqAir ?? vehicle?.req ?? vehicle?.reqUnit ?? vehicle?.unitReqUnit ?? vehicle?.unitReqAir;
+              backupImg = backupImg ?? vehicle?.backupImgURL ?? vehicle?.iconURL ?? vehicle?.icon;
+              position = position ?? vehicle?.position ?? vehicle?.unitPosition ?? vehicle?.techTreePosition;
+              title =  title ?? vehicle?.title ?? vehicle?.tooltip ?? null;
+
+              vehicle = {
+                ...vehicle,
+                unitRank: rank,
+                unitId: id,
+                unitName: name,
+                imgURL: img,
+                unitBR: br,
+                isReserve: isReserve,
+                reqAir: req,
+                isPremium,
+                title, 
+                isSquadron,
+                isHidden,
+                position,
+                relativePos,
+                isNew,
+                mobileY,
+                backupImgURL: backupImg,
+              };
+              if (!id?.endsWith("_group")) {
+                this.#rankVehicleData[rank] = this.#rankVehicleData[rank] || [];
+                this.#rankVehicleData[rank].push(vehicle);
+              }
+            });
+            let sortedRanks = Object.keys(this.#rankVehicleData).sort((x, y) => this.#romanToInt(x) - this.#romanToInt(y));
+            sortedRanks.forEach((currRank) => {
+              this.#createTreeColumn([{
+                name: `Rank ${currRank}`,
+                until: 6
+              }], this.treeInstance);
+              this.#createTreeRank([{
+                vehicles: this.#rankVehicleData[currRank],
+                until: 6
+              }], this.treeInstance);
+            });
+            this.container?.appendChild(this.treeInstance);
+            this.container?.appendChild(arrowInstance);
+            this.#drawArrows();
+            return this.treeInstance;
+          }
+          #createUnitTreeGroup(group) {
+            if (!group) return null;
+            let groupId = group?.groupId ?? group?.group ?? group?.unitGroupId ?? group?.unitId ?? group?.id ?? "";
+            let isPremium = group?.isPremium ?? false;
+            let isSquadron = group?.isSquadron ?? group?.isSquadronVehicle ?? false;
+            let isLocked = group?.isBroken ?? group?.isLocked ?? false;
+            let reqAir = group?.reqAir ?? group?.reqUnit ?? group?.unitReqUnit ?? group?.unitReqAir ?? null;
+            let td = document.createElement("td");
+            let div = document.createElement("div");
+            div.className = `wt-tree_group${isPremium ? "--prem" : isSquadron ? "--squad" : isLocked ? "--broken" : ""}`;
+            div.dataset.unitId = groupId;
+            div.dataset.reqAir = reqAir;
+          }
+          #createUnitTreeSlot(unit) {
+            if (!unit) return null;
+            let unitId = unit?.unitId ?? unit?.id ?? "";
+            let imgURL = unit?.imgURL ?? unit?.imageURL ?? "";
+            let backupImgURL = unit?.backupImgURL ?? unit?.icon ?? "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+            let unitName = unit?.unitName ?? unit?.name ?? unitId;
+            let unitRank = unit?.unitRank ?? unit?.rank ?? "I";
+            let reqAir = unit?.reqAir ?? unit?.reqUnit ?? unit?.unitReqUnit ?? unit?.unitReqAir ?? null;
+            let unitBR = unit?.unitBR ?? "1.0";
+            let isReserve = unit?.isReserve ?? unit?.reserve ?? unit?.unitIsReserve ?? unit?.isReserve;
+            let showBR = unit?.unitShowBR ?? unit?.showBR ?? true;
+            let isPremium = unit?.isPremium ?? false;
+            let isSquadron = unit?.isSquadron ?? unit?.isSquadronVehicle ?? false;
+            let isLocked = unit?.isBroken ?? unit?.isLocked ?? false;
+            let isNew = unit?.isNew ?? unit?.isRecentlyReleased ?? false;
+            let isHidden = unit?.isHidden ?? unit?.unitIsHidden ?? unit?.hidden ?? false;
+            let isTalisman = isPremium ?? false;
+            let title = unit?.title ?? unit?.tooltip ?? null;
+            let td = document.createElement("td");
+            let div = document.createElement("div");
+            let imgContainer = document.createElement("div");
+            imgContainer.className = "wt-tree_item-img_container";
+            div.className = `wt-tree_item${isPremium ? "--prem" : isSquadron ? "--squad" : isLocked ? "--broken" : ""}`;
+            if (isHidden) div.classList.add("hidden");
+            if (isTalisman && this.#talisman_svg) imgContainer.innerHTML = this.#talisman_svg;
+            div.dataset.unitId = unitId;
+            div.title = title;
+            div.dataset.unitRank = typeof unitRank == "number" ? unitRank : this.#romanToInt(unitRank) ?? 1;
+            div.dataset.unitBattleRating = unitBR ?? "1.0";
+            if (reqAir) div.dataset.unitReq = reqAir; //style="background: linear-gradient(rgba(0, 0, 0, ${transparency}), rgba(0, 0, 0, ${transparency})), url('${imgURL}');
+            div.innerHTML = `		<div class="wt-tree_item-icon" style="background-image:url('${imgURL}');"></div>		<div class="wt-tree_item-text">			<span>${unitName}</span>		</div>
+                  ${isNew && this.#new_svg ? this.#new_svg : ""}					<span class="br">${showBR ? isReserve ? "Reserve" : unitBR : ""}</span>`;
+            td.appendChild(div);
+            td.appendChild(imgContainer);
+            let testImage = new Image();
+            testImage.onerror = () => div.querySelector(".wt-tree_item-icon")?.style.setProperty("background-image", `url('${backupImgURL}')`);
+            testImage.src = imgURL;
+            this.#slotOriginalClass[String(unitId)] = div.className;
+            return td;
+          }
+          #placeUnitInGrid(unitSlot, grid, unit) {
+            let baseX = Number(unit?.x ?? unit?.unitX ?? 0);
+            let baseY = Number(unit?.y ?? unit?.unitY ?? 0);
+            const relX = Number(unit?.customX ?? unit?.relativeX ?? 0);
+            const relY = Number(unit?.customY ?? unit?.relativeY ?? 0);
+            let x = baseX + relX;
+            let y = baseY + relY;
+            if (x < 0) x = 0;
+            if (y < 0) y = 0;
+            while (grid.length <= y) grid.push([]);
+            while (grid[y].length <= x) grid[y].push(null);
+            while (grid[y][x] !== null) {
+              x++;
+              while (grid[y].length <= x) grid[y].push(null);
+            }
+            grid[y][x] = {
+              slot: unitSlot,
+              unit: unit,
+              x,
+              y,
+            };
+            unitSlot.dataset.gridX = x;
+            unitSlot.dataset.gridY = y;
+            return {
+              x,
+              y
+            };
+          }
+          #createTreeHeader(list, container) {
+            container = container ?? null;
+            if (!Array.isArray(list)) list = ["Researchable vehicles", "Premium vehicles"];
+            let untilCounter = 0;
+            list = list.map((item) => {
+              if (typeof item === "string") {
+                untilCounter += 3;
+                return {
+                  name: item,
+                  until: untilCounter
+                };
+              } else if (typeof item === "object" && item !== null) {
+                untilCounter = Math.max(untilCounter, item.until ?? untilCounter);
+                return item;
+              }
+              return null;
+            }).filter(Boolean);
+            let resultObj = document.createElement("div");
+            resultObj.setAttribute("class", "wt-tree_header wt-tree_row");
+            list.forEach((title, i) => {
+              if (!(title?.until < 1)) {
+                let titleObj = document.createElement("div");
+                let seperator = document.createElement("div");
+                let prevUntil = list[i - 1]?.until ?? 0;
+                let shouldCreateSeperator = i != 0;
+                let gridColStart = prevUntil + 1;
+                let gridColEnd = title?.until ?? 1;
+                let gridColStart_seperator = prevUntil;
+                let gridColEnd_seperator = gridColStart;
+                titleObj.innerHTML = title?.name ?? "";
+                titleObj.setAttribute("style", `grid-column: ${gridColStart} / ${gridColEnd}`);
+                seperator.setAttribute("style", `grid-column: ${gridColStart_seperator} / ${gridColEnd_seperator}`);
+                seperator.setAttribute("class", "wt-tree_v-line");
+                seperator.innerHTML = `														<div class="wt-tree_v-line_instance"></div>`;
+                if (shouldCreateSeperator) resultObj.appendChild(seperator);
+                resultObj.appendChild(titleObj);
+              }
+            });
+            container?.appendChild(resultObj);
+            return resultObj;
+          }
+          #createTreeColumn(options, container) {
+            container = container ?? null;
+            options = Array.isArray(options) ? {
+              list: options
+            } : options;
+            options.list = options?.list ?? [];
+            let resultObj = document.createElement("div");
+            resultObj.setAttribute("class", `wt-tree_r-header wt-tree_row`);
+            options.list.forEach((title, i) => {
+              if (!(title?.until < 1)) {
+                let titleObj = document.createElement("div");
+                let seperator = document.createElement("div");
+                let prevUntil = options.list[i - 1]?.until ?? 0;
+                let shouldCreateSeperator = i != 0;
+                let gridColStart = prevUntil + 1;
+                let gridColEnd = title?.until ?? 1;
+                let gridColStart_seperator = prevUntil;
+                let gridColEnd_seperator = gridColStart;
+                titleObj.innerHTML = title?.name ? `														<div class="wt-tree_r-header_label">${title.name}</div>` : `																	<div class="wt-tree_r-header_label"></div>`;
+                titleObj.setAttribute("style", `grid-column: ${gridColStart} / ${gridColEnd}`);
+                seperator.setAttribute("style", `grid-column: ${gridColStart_seperator} / ${gridColEnd_seperator}`);
+                seperator.setAttribute("class", "wt-tree_v-line");
+                seperator.innerHTML = `														<div class="wt-tree_v-line_instance"></div>`;
+                if (shouldCreateSeperator) resultObj.appendChild(seperator);
+                resultObj.appendChild(titleObj);
+              }
+            });
+            container?.appendChild(resultObj);
+            return resultObj;
+          }
+          #createTreeRank(options, container) {
+            container = container ?? null;
+            options = Array.isArray(options) ? {
+              list: options
+            } : options;
+            if (typeof options != "object") return null;
+            const shiftUnits = options?.shiftUnits !== false;
+            let resultObj = document.createElement("div");
+            resultObj.setAttribute("class", "wt-tree_rank wt-tree_row");
+            options.list.forEach((title, i) => {
+              let vehList = title?.vehicles ?? [];
+              if (!Array.isArray(vehList) || title.until < 1) return;
+              let rankObj = document.createElement("div");
+              let unitTableObj = document.createElement("table");
+              let tableBodyObj = document.createElement("tbody");
+              let prevUntil = options.list[i - 1]?.until ?? 0;
+              let shouldCreateSeperator = (i != 0);
+              let gridColStart = prevUntil + 1;
+              let gridColEnd = title?.until ?? 1;
+              if (shouldCreateSeperator) {
+                let seperator = document.createElement("div");
+                seperator.setAttribute("class", "wt-tree_v-line");
+                seperator.innerHTML = `								<div class="wt-tree_v-line_instance"></div>`;
+                seperator.style.gridColumn = `${gridColStart - 1} / ${gridColStart}`;
+                resultObj.appendChild(seperator);
+              }
+              let MAX_X = this.#settings.maxX;
+              if (shiftUnits) {
+                const verticalLineX = this.#settings.verticalLineX ?? 4;
+                const maxX = this.#settings.maxX;
+                const specialUnits = vehList.filter(v => v.isPremium || v.isSquadron || v.isSquadronVehicle);
+                let nextX = verticalLineX + 1;
+                specialUnits.forEach(vehicle => {
+                  let unitX = vehicle?.x ?? vehicle?.position?.x ?? vehicle?.position?.[0] ?? 0;
+                  if (unitX <= verticalLineX || unitX >= maxX) {
+                    let desiredX = nextX;
+                    desiredX = Math.min(desiredX, maxX - 1);
+                    vehicle._shiftedX = desiredX;
+                    nextX++;
+                  } else {
+                    vehicle._shiftedX = unitX;
+                  }
+                });
+                vehList.forEach(vehicle => {
+                  if (!("_shiftedX" in vehicle)) {
+                    const unitX = vehicle?.x ?? vehicle?.position?.x ?? vehicle?.position?.[0] ?? 0;
+                    vehicle._shiftedX = unitX;
+                  }
+                });
+              }
+              let yList = vehList.map(v => v?.y ?? v?.position?.y ?? v?.position?.[1] ?? 0);
+              let maxYPlaceholder = Math.max(...yList) ?? 0;
+              let grid = [];
+              for (let y = 0; y <= maxYPlaceholder; y++) {
+                let tr = document.createElement("tr");
+                tr.dataset.y = y;
+                let row = [];
+                for (let x = 0; x < MAX_X; x++) {
+                  let td = document.createElement("td");
+                  td.className = "wt-tree_cell";
+                  td.dataset.x = x;
+                  td.dataset.y = y;
+                  tr.appendChild(td);
+                  row.push(td);
+                }
+                tableBodyObj.appendChild(tr);
+                grid.push(row);
+              }
+              let minYPerX = {};
+              vehList.forEach(vehicle => {
+                let unitX = vehicle._shiftedX;
+                let unitY = vehicle?.y ?? vehicle?.mobileY ?? vehicle?.position?.y ?? vehicle?.position?.[1] ?? 0;
+                if (!(unitX in minYPerX) || unitY < minYPerX[unitX]) minYPerX[unitX] = unitY;
+              });
+              let appendedUnits = new Set();
+              vehList.forEach(vehicle => {
+                let unitX = vehicle?.relativePos?.x ?? vehicle._shiftedX;
+                let unitY = vehicle?.mobileY ?? vehicle?.y ?? vehicle?.position?.y ?? vehicle?.position?.[1] ?? 0;
+                let adjY = vehicle?.relativePos?.y ?? unitY - minYPerX[unitX];
+                let key = `${unitX}-${adjY}-${vehicle?.unitId}`;
+                if (appendedUnits.has(key)) return;
+                appendedUnits.add(key);
+                let unitSlot = this.#createUnitTreeSlot(vehicle) ?? document.createElement("td");
+
+                if (unitX >= MAX_X) {
+                  let found = false;
+                  let tryY = adjY;
+                  while (!found) {
+                    if (!grid[tryY]) {
+                      let tr = document.createElement("tr");
+                      tr.dataset.y = grid.length;
+                      let row = [];
+                      for (let x = 0; x < MAX_X; x++) {
+                        let td = document.createElement("td");
+                        td.className = "wt-tree_cell";
+                        td.dataset.x = x;
+                        td.dataset.y = grid.length;
+                        tr.appendChild(td);
+                        row.push(td);
+                      }
+                      tableBodyObj.appendChild(tr);
+                      grid.push(row);
+                    }
+
+                    let closestX = null;
+                    let minDistance = Infinity;
+                    for (let tryX = 0; tryX < MAX_X; tryX++) {
+                      if (grid[tryY]?.[tryX]?.children.length === 0) {
+                        let dist = Math.abs(tryX - (MAX_X - 1));
+                        if (dist < minDistance) {
+                          minDistance = dist;
+                          closestX = tryX;
+                        }
+                      }
+                    }
+                    if (closestX !== null) {
+                      grid[tryY][closestX].appendChild(unitSlot);
+                      found = true;
+                      break;
+                    } else {
+                      tryY++;
+                    }
+                    if (tryY > grid.length) {
+                      let bottomY = grid.length;
+                      let tr = document.createElement("tr");
+                      tr.dataset.y = bottomY;
+                      let row = [];
+                      for (let x = 0; x < MAX_X; x++) {
+                        let td = document.createElement("td");
+                        td.className = "wt-tree_cell";
+                        td.dataset.x = x;
+                        td.dataset.y = bottomY;
+                        tr.appendChild(td);
+                        row.push(td);
+                      }
+                      tableBodyObj.appendChild(tr);
+                      grid.push(row);
+                    }
+                  }
+                } else {
+                  while (!grid[adjY]) {
+                    const tr = document.createElement("tr");
+                    const newY = grid.length;
+                    tr.dataset.y = newY;
+
+                    const row = [];
+                    for (let x = 0; x < MAX_X; x++) {
+                      const td = document.createElement("td");
+                      td.className = "wt-tree_cell";
+                      td.dataset.x = x;
+                      td.dataset.y = newY;
+                      tr.appendChild(td);
+                      row.push(td);
+                    }
+
+                  tableBodyObj.appendChild(tr);
+                  grid.push(row);
+                }
+
+                const tr = tableBodyObj.querySelector(`tr[data-y="${adjY}"]`);
+                while (!grid[adjY][unitX]) {
+                  const x = grid[adjY].length;
+
+                  const td = document.createElement("td");
+                  td.className = "wt-tree_cell";
+                  td.dataset.x = x;
+                  td.dataset.y = adjY;
+                  tr.appendChild(td);
+                  grid[adjY][x] = td;
+                }
+                grid[adjY][unitX].appendChild(unitSlot);
+                }
+              });
+              let highestY = -1;
+              for (let y = 0; y < grid.length; y++) {
+                for (let x = 0; x < grid[y].length; x++) {
+                  if (grid[y][x]?.children.length > 0) highestY = Math.max(highestY, y);
+                }
+              }
+              for (let y = grid.length - 1; y > highestY; y--) {
+                let tr = tableBodyObj.querySelector(`tr[data-y="${y}"]`);
+                if (tr) tr.remove();
+                grid.pop();
+              }
+              unitTableObj.appendChild(tableBodyObj);
+              unitTableObj.setAttribute("class", "wt-tree_rank-instance");
+              unitTableObj.setAttribute("style", "margin-left:auto;");
+              rankObj.setAttribute("style", `grid-column: ${gridColStart} / ${gridColEnd}`);
+              rankObj.appendChild(unitTableObj);
+              resultObj.appendChild(rankObj);
+            });
+            container?.appendChild(resultObj);
+            return resultObj;
+          }
+          setRankLocked(rank = 2, shouldBeLocked = true) {
+            let hasFoundRank = false;
+            this.container?.querySelectorAll(`td > [data-unit-rank="${typeof rank == "string" ? this.#romanToInt(rank) : rank}"]`)?.forEach((el) => {
+              hasFoundRank = hasFoundRank || true;
+              let classList = Array.from(el.classList ?? []);
+              let id = el.dataset.unitId;
+              if (shouldBeLocked) {
+                this.#slotOriginalClass[String(id)] = this.#slotOriginalClass[String(id)] ?? el.className;
+                if (classList.includes("wt-tree_item--prem") || classList.includes("wt-tree_item--squad")) return;
+                el.className = "wt-tree_item--broken";
+              } else {
+                el.className = this.#slotOriginalClass[String(id)] ?? "wt-tree_item";
+              }
+            });
+            return hasFoundRank;
+          }
+          get vehicleData() {
+            return this.#setVehicles;
+          }
+        }
+    </script>
+    <h1>Tech Tree Viewer</h1>
+    <div class="wrapper">
+      <!--left-->
+      <div class="form-section">
+        <label class="version">heads/master</label>
+        <br>
+        <label for="sel_nation">Nation</label>
+        <select disabled id="sel_nation">
+          <option value="country_usa">...</option>
+        </select>
+        <label for="sel_tree">Tree</label>
+        <select disabled id="sel_tree">
+          <option value="army">...</option>
+        </select>
+        <label for="select_vehicle">Unit Search</label>
+        <input type="text" disabled id="select_vehicle">
+        <button disabled id="vehicle_preview">Preview</button>
+        <br>
+      </div>
+      <div class="divider"></div>
+      <!--right-->
+      <div class="table-container">
+        <div class="wt-tree_wrapper" style="--wt-tree-l-width: 648px; --wt-tree-r-width: 252px; --wt-tree-minwidth: 955px;"></div>
+      </div>
+    </div>
+    <br>
+    <div class="low">
+      <div class="gsearch-results">
+        <div class="gsearch-results-group">
+          <div class="gsearch-results-list"></div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
