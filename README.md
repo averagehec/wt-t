@@ -1,5 +1,5 @@
 # wt-t
-This will soon store files in relation to Dagor games.
+This will soon store files in relation to Dagor games, mainly using just the browser.
 
 ## Finished development
 * .YUP parser
