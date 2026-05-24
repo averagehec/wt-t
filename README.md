@@ -9,3 +9,5 @@ This will soon store files in relation to Dagor games, mainly using just the bro
 ## In development
 * Live map
 * Online unpackers
+* Tech Tree Viewer V2
+* FM & Weapon statistics
